@@ -68,8 +68,4 @@ def ident_is_flag(ident):
     if ident.find("FLAG") >= 0:
         return True
 
-    for entry in flag_rules:
-        if re.match(entry, ident):
-            return True
-
-    return False
+    return any(re.match(entry, ident) for entry in flag_rules)

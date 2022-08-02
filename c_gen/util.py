@@ -28,12 +28,13 @@
 """
 Utilities for generating the target C code
 """
+
 import os
 import loxi_utils.loxi_utils as utils
 import template_utils as template_utils
 
 templates_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'templates')
-template_path = [templates_dir, templates_dir + '/locitest']
+template_path = [templates_dir, f'{templates_dir}/locitest']
 
 def render_template(out, name, **context):
     template_utils.render_template(out, name, template_path, context)

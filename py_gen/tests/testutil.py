@@ -78,7 +78,7 @@ def test_pretty(obj, expected):
 # Run test_serialization and possibly test_pretty against the named data file
 def test_datafile(name, ofp):
     data = test_data.read(name)
-    if not 'python' in data:
+    if 'python' not in data:
         raise unittest.SkipTest("no python section in datafile")
     binary = data['binary']
     python = data['python']
@@ -104,4 +104,5 @@ def add_datafiles_tests(klass, regex, ofp):
             def fn(self):
                 test_datafile(filename, ofp)
             return fn
-        setattr(klass, 'test_' + os.path.splitext(filename)[0], make_test(filename))
+
+        setattr(klass, f'test_{os.path.splitext(filename)[0]}', make_test(filename))

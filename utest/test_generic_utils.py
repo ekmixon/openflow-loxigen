@@ -69,7 +69,7 @@ class GenericTest(unittest.TestCase):
         @memoize
         def function(a, b):
             self.count += 1
-            return "%s:%s" % (a,b)
+            return f"{a}:{b}"
 
         self.assertEqual(0, self.count)
         self.assertEqual("a:b", function('a', 'b'))

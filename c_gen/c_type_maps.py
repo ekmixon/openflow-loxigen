@@ -100,7 +100,7 @@ static const int\nof_object_fixed_len_v%d[OF_OBJECT_COUNT] = {
             comma = ","
             if i == len(of_g.all_class_order) - 1:
                 comma = ""
-            val = "-1" + comma
+            val = f"-1{comma}"
             if (cls, version) in of_g.base_length:
                 val = str(of_g.base_length[(cls, version)]) + comma
             out.write("    %-5s /* %d: %s */\n" % (val, i + 1, cls))

@@ -133,9 +133,11 @@ class OrderedSet(collections.MutableSet):
         return key
 
     def __repr__(self):
-        if not self:
-            return '%s()' % (self.__class__.__name__,)
-        return '%s(%r)' % (self.__class__.__name__, list(self))
+        return (
+            '%s(%r)' % (self.__class__.__name__, list(self))
+            if self
+            else f'{self.__class__.__name__}()'
+        )
 
     def __eq__(self, other):
         if isinstance(other, OrderedSet):
@@ -174,10 +176,7 @@ class OrderedDefaultDict(collections.OrderedDict):
         return value
 
     def __reduce__(self):
-        if self.default_factory is None:
-            args = tuple()
-        else:
-            args = self.default_factory,
+        args = tuple() if self.default_factory is None else (self.default_factory, )
         return type(self), args, None, None, self.items()
 
     def copy(self):
@@ -191,8 +190,7 @@ class OrderedDefaultDict(collections.OrderedDict):
         return type(self)(self.default_factory,
                           copy.deepcopy(list(self.items())))
     def __repr__(self):
-        return 'OrderedDefaultDict(%s, %s)' % (self.default_factory,
-                                        collections.OrderedDict.__repr__(self))
+        return f'OrderedDefaultDict({self.default_factory}, {collections.OrderedDict.__repr__(self)})'
 
 
 def find(func, iterable):
@@ -200,20 +198,13 @@ def find(func, iterable):
     find the first item in iterable for which func returns something true'ish.
     @returns None if no item in iterable fulfills the condition
     """
-    for i in iterable:
-        if func(i):
-            return i
-    return None
+    return next((i for i in iterable if func(i)), None)
 
 def count(func, iteratable):
     """
     count how the number of items in iterable for which func returns something true'ish.
     """
-    c = 0
-    for i in iterable:
-        if func(i):
-            c +=1
-    return c
+    return sum(bool(func(i)) for i in iterable)
 
 def chunks(l, n):
     """

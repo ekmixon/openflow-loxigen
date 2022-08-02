@@ -356,7 +356,7 @@ def all_ones_mask(d_type):
     if d_type == "of_mac_addr_t":
         return "of_mac_addr_all_ones"
     else:
-        return "((%s) -1)" % d_type
+        return f"(({d_type}) -1)"
 
 def gen_unified_match_to_v2(out):
     """
@@ -428,7 +428,9 @@ of_match_to_wire_match_v2(of_match_t *src, of_match_v2_t *dst)
 
 """ % dict(key=key, ku=key.upper(), ones_mask=ones_mask))
         else:
-            out.write("""
+            out.write(
+                (
+                    """
     if (!OF_MATCH_MASK_%(ku)s_EXACT_TEST(src)) {
         return OF_ERROR_COMPAT;
     }
@@ -437,8 +439,15 @@ of_match_to_wire_match_v2(of_match_t *src, of_match_v2_t *dst)
     } else {
         OF_MATCH_V2_WC_%(ku)s_SET(wildcards);
     }
-""" % dict(key=key, ku=key.upper(),
-           wc_bit="OF_MATCH_WC_V2_%s" % key.upper()))
+"""
+                    % dict(
+                        key=key,
+                        ku=key.upper(),
+                        wc_bit=f"OF_MATCH_WC_V2_{key.upper()}",
+                    )
+                )
+            )
+
 
     out.write("""
     of_match_v2_wildcards_set(dst, wildcards);

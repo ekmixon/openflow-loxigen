@@ -52,7 +52,7 @@ def h_file_to_define(name):
     Convert a .h file name to the define used for the header
     """
     h_name = name[:-2].upper()
-    h_name = "_" + h_name + "_H_"
+    h_name = f"_{h_name}_H_"
     return h_name
 
 def enum_name(cls):
@@ -169,16 +169,16 @@ def identifiers_gen(out, filename):
         vbv_code = ""
         first = True
         for version in of_g.target_version_list:
-            vbv_params.append("value_%s" % of_g.short_version_names[version])
+            vbv_params.append(f"value_{of_g.short_version_names[version]}")
             if not first:
                 vbv_code += "\\\n     "
             else:
                 first = False
-            last_value = "value_%s" % of_g.short_version_names[version]
-            vbv_code += "((version) == %s) ? (%s) : " % \
-                (of_g.of_version_wire2name[version], last_value)
+            last_value = f"value_{of_g.short_version_names[version]}"
+            vbv_code += f"((version) == {of_g.of_version_wire2name[version]}) ? ({last_value}) : "
+
         # @todo Using last value, can optimize out last ?
-        vbv_code += "(%s)" % last_value
+        vbv_code += f"({last_value})"
 
     out.write("""
 /**
@@ -227,8 +227,7 @@ def identifiers_gen(out, filename):
 
     # For each group of identifiers, bunch ident defns
     count = 1
-    keys = list(of_g.identifiers_by_group.keys())
-    keys.sort()
+    keys = sorted(of_g.identifiers_by_group.keys())
     for group in keys:
         idents = of_g.identifiers_by_group[group]
         idents.sort()
@@ -240,9 +239,7 @@ def identifiers_gen(out, filename):
         for ident in idents:
             info = of_g.identifiers[ident]
 
-            keys = list(info["values_by_version"].keys())
-            keys.sort()
-
+            keys = sorted(info["values_by_version"].keys())
             out.write("""
 /*
  * Defines for %(ident)s
@@ -256,10 +253,11 @@ def identifiers_gen(out, filename):
 #define %(ident)s_SUPPORTED(version) OF_IDENT_IN_ALL_VERSIONS
 """ % dict(ident=ident))
             else: # Undefined for some version
-                sup_list = []
-                for version in keys:
-                    sup_list.append("((version) == %s)" %
-                                    of_g.of_version_wire2name[version])
+                sup_list = [
+                    f"((version) == {of_g.of_version_wire2name[version]})"
+                    for version in keys
+                ]
+
                 out.write("""\
 #define %(ident)s_SUPPORTED(version)      \\
     (%(sup_str)s)
@@ -288,7 +286,7 @@ def identifiers_gen(out, filename):
     OF_VALUE_BY_VERSION(version, %(val_str)s)
 """ % dict(ident=ident, val_str=", ".join(val_list)))
             if flags.ident_is_flag(ident):
-                log("Treating %s as a flag" % ident)
+                log(f"Treating {ident} as a flag")
                 out.write("""
 #define %(ident)s_SET(flags, version)     \\
     OF_FLAG_SET(flags, %(ident)s_BY_VERSION(version))
@@ -860,7 +858,7 @@ def acc_name(cls, m_name):
     @param m_name The member name
     """
     (m_type, get_rv) = get_acc_rv(cls, m_name)
-    return "%s_%s" % (cls, m_type)
+    return f"{cls}_{m_type}"
 
 def get_acc_rv(cls, m_name):
     """
@@ -891,17 +889,18 @@ def param_list(cls, m_name, a_type):
     """
     member = of_g.unified[cls]["union"][m_name]
     m_type = member["m_type"]
-    params = ["%s_t *obj" % cls]
-    if a_type == "set":
-        if loxi_utils.type_is_scalar(m_type):
-            params.append("%s %s" % (m_type, m_name))
-        else:
-            params.append("%s *%s" % (m_type, m_name))
-    elif a_type in ["get", "bind"]:
-        params.append("%s *%s" % (m_type, m_name))
+    params = [f"{cls}_t *obj"]
+    if a_type == "set" and loxi_utils.type_is_scalar(m_type):
+        params.append(f"{m_type} {m_name}")
+    elif (
+        a_type == "set"
+        and not loxi_utils.type_is_scalar(m_type)
+        or a_type != "set"
+        and a_type in ["get", "bind"]
+    ):
+        params.append(f"{m_type} *{m_name}")
     else:
-        debug("Class %s, name %s Bad param list a_type: %s" %
-            (cls, m_name, a_type))
+        debug(f"Class {cls}, name {m_name} Bad param list a_type: {a_type}")
         sys.exit(1)
     return params
 
@@ -946,9 +945,11 @@ def v3_match_offset_get(cls):
     otherwise return -1
     """
     result = field_ver_get(cls, "match")
-    if of_g.VERSION_1_2 in result:
-        if result[of_g.VERSION_1_2][0] == "of_match_v3_t":
-            return result[of_g.VERSION_1_2][1]
+    if (
+        of_g.VERSION_1_2 in result
+        and result[of_g.VERSION_1_2][0] == "of_match_v3_t"
+    ):
+        return result[of_g.VERSION_1_2][1]
     return -1
 
 ################################################################
@@ -964,8 +965,8 @@ def gen_struct_typedefs(out):
     """
 
     out.write("\n/* LOCI object typedefs */\n")
+    template = "typedef of_object_t %(cls)s_t;\n"
     for cls in of_g.standard_class_order:
-        template = "typedef of_object_t %(cls)s_t;\n"
         out.write(template % dict(cls=cls))
 
     out.write("""
@@ -1080,7 +1081,7 @@ def wire_accessor(m_type, a_type):
         m_type = m_type[:-2]
     if m_type == "octets":
         m_type = "octets_data"
-    return "of_wire_buffer_%s_%s" % (m_type, a_type)
+    return f"of_wire_buffer_{m_type}_{a_type}"
 
 def get_len_macro(cls, m_name, m_type, version):
     """
@@ -1130,13 +1131,11 @@ def gen_accessor_offsets(out, cls, m_name, version, a_type, m_type, offset):
             pass
         elif (cls == "of_bsn_gentable_entry_desc_stats_entry" and m_name == "value"):
             pass
-        elif (cls == "of_bsn_gentable_entry_stats_entry" and m_name == "stats"):
-            pass
-        else:
+        elif cls != "of_bsn_gentable_entry_stats_entry" or m_name != "stats":
             debug("Error: Unknown member with offset == -1")
             debug("  cls %s, m_name %s, version %d" % (cls, m_name, version))
             sys.exit(1)
-        o_str = "_%s_%s_OFFSET(obj)" % (cls.upper()[3:], m_name.upper())
+        o_str = f"_{cls.upper()[3:]}_{m_name.upper()}_OFFSET(obj)"
 
     out.write("""\
         offset = %s;
@@ -1171,9 +1170,7 @@ def gen_get_accessor_body(out, cls, m_type, m_name):
     Generate the common operations for a get accessor
     """
     if loxi_utils.type_is_scalar(m_type):
-        ver = ""      # See if version required for scalar update
-        if m_type in of_g.of_mixed_types:
-            ver = "ver, "
+        ver = "ver, " if m_type in of_g.of_mixed_types else ""
         out.write("""\
     %(wa)s(%(ver)swbuf, abs_offset, %(m_name)s);
 """ % dict(wa=wire_accessor(m_type, "get"), ver=ver, m_name=m_name))
@@ -1309,7 +1306,7 @@ def obj_assert_check(cls):
                "of_flow_add"]:
         return "IS_FLOW_MOD_SUBTYPE(obj->object_id)"
     else:
-        return "obj->object_id == %s" % cls.upper()
+        return f"obj->object_id == {cls.upper()}"
 
 def gen_of_object_get(out, cls, m_name, m_type):
     sub_cls = m_type[:-2]
@@ -1582,7 +1579,7 @@ def gen_new_fn_body(cls, out):
 
     uclass = loxi_globals.unified.class_by_name(cls)
     is_fixed_length = uclass and uclass.is_fixed_length
-    max_length = is_fixed_length and "bytes" or "OF_WIRE_BUFFER_MAX_LENGTH"
+    max_length = "bytes" if is_fixed_length else "OF_WIRE_BUFFER_MAX_LENGTH"
 
     out.write("""
 /**
@@ -1771,7 +1768,7 @@ def gen_accessor_doc(out, name):
             else:
                 ver_string = "("
                 for ver in sorted(ver_type_map):
-                    ver_string += " " + of_g.short_version_names[ver]
+                    ver_string += f" {of_g.short_version_names[ver]}"
                 ver_string += ")."
 
             f_name = acc_name(cls, m_name)

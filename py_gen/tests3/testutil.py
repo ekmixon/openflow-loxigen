@@ -91,12 +91,12 @@ def test_datafile(name, ofp, pyversion):
     else:
         key = 'python'
     if key not in data:
-        raise unittest.SkipTest("no %s section in datafile" % key)
+        raise unittest.SkipTest(f"no {key} section in datafile")
     binary = data['binary']
     python = data[key]
     obj = eval(python, { 'ofp': ofp })
     test_serialization(obj, binary)
-    keyprettyprint = key + ' pretty-printer'
+    keyprettyprint = f'{key} pretty-printer'
     if keyprettyprint in data:
         test_pretty(obj, data[keyprettyprint])
 
@@ -117,4 +117,5 @@ def add_datafiles_tests(klass, regex, ofp, pyversion=3):
             def fn(self):
                 test_datafile(filename, ofp, pyversion)
             return fn
-        setattr(klass, 'test_' + os.path.splitext(filename)[0], make_test(filename))
+
+        setattr(klass, f'test_{os.path.splitext(filename)[0]}', make_test(filename))

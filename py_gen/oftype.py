@@ -230,7 +230,7 @@ embedded_structs = {
 
 for (cls, pyclass) in embedded_structs.items():
     type_data_map[cls] = OFTypeData(
-        init='%s()' % pyclass,
+        init=f'{pyclass}()',
         pack='%s.pack()',
         unpack='%s.unpack(%%s)' % pyclass,
         init3=None,
@@ -245,8 +245,7 @@ def lookup_type_data(oftype, version):
 
 # Return an initializer expression for the given oftype
 def gen_init_expr(oftype, version, pyversion):
-    type_data = lookup_type_data(oftype, version)
-    if type_data:
+    if type_data := lookup_type_data(oftype, version):
         if pyversion == 3:
             return (
                 type_data.init3
@@ -268,18 +267,15 @@ def gen_init_expr(oftype, version, pyversion):
 # 'value_expr' is a string of Python code which will evaluate to
 # the value to be packed.
 def gen_pack_expr(oftype, value_expr, version, pyversion):
-    type_data = lookup_type_data(oftype, version)
-    if type_data:
+    if type_data := lookup_type_data(oftype, version):
         if pyversion == 3:
             fmt = type_data.pack3 or type_data.pack or None
-            return (fmt % value_expr) if fmt else \
-                ("loxi.unimplemented('pack %s')" % oftype)
         else:
             fmt = type_data.pack or None
-            return (fmt % value_expr) if fmt else \
-                ("loxi.unimplemented('pack %s')" % oftype)
+        return (fmt % value_expr) if fmt else \
+            ("loxi.unimplemented('pack %s')" % oftype)
     elif oftype_is_list(oftype):
-        return "loxi.generic_util.pack_list(%s)" % value_expr
+        return f"loxi.generic_util.pack_list({value_expr})"
     else:
         return "loxi.unimplemented('pack %s')" % oftype
 
@@ -288,23 +284,20 @@ def gen_pack_expr(oftype, value_expr, version, pyversion):
 # 'reader_expr' is a string of Python code which will evaluate to
 # the OFReader instance used for deserialization.
 def gen_unpack_expr(oftype, reader_expr, version, pyversion):
-    type_data = lookup_type_data(oftype, version)
-    if type_data:
+    if type_data := lookup_type_data(oftype, version):
         if pyversion == 3:
             fmt = type_data.unpack3 or type_data.unpack or None
-            return (fmt % reader_expr) if fmt else \
-                ("loxi.unimplemented('unpack %s')" % oftype)
         else:
             fmt = type_data.unpack or None
-            return (fmt % reader_expr) if fmt else \
-                ("loxi.unimplemented('unpack %s')" % oftype)
+        return (fmt % reader_expr) if fmt else \
+            ("loxi.unimplemented('unpack %s')" % oftype)
     elif oftype_is_list(oftype):
         ofproto = loxi_globals.ir[version]
         ofclass = ofproto.class_by_name(oftype_list_elem(oftype))
         assert ofclass, "No class named %r" % oftype_list_elem(oftype)
         module_name, class_name = py_gen.codegen.generate_pyname(ofclass)
-        return 'loxi.generic_util.unpack_list(%s, ofp.%s.%s.unpack)' % \
-            (reader_expr, module_name, class_name)
+        return f'loxi.generic_util.unpack_list({reader_expr}, ofp.{module_name}.{class_name}.unpack)'
+
     else:
         return "loxi.unimplemented('unpack %s')" % oftype
 

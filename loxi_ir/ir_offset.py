@@ -174,8 +174,7 @@ def calc_lengths(version, fe_class, existing_classes, existing_enums):
             if m_type.find("list(") == 0:
                 member_fixed_length = False
             elif m_type.find("struct") == 0:
-                raise Exception("Error: recursive struct found: {}, {}"
-                                    .format(fe_class.name, name))
+                raise Exception(f"Error: recursive struct found: {fe_class.name}, {name}")
             elif m_type == "octets":
                 member_fixed_length = False
             else:
@@ -189,7 +188,7 @@ def calc_lengths(version, fe_class, existing_classes, existing_enums):
         offset += member_base_length
 
     base_length = offset
-    fixed_length = offset_fixed if not fe_class.virtual else False
+    fixed_length = False if fe_class.virtual else offset_fixed
     return (base_length, fixed_length, member_infos)
 
 def member_length(version, fe_class, fe_member, existing_classes, existing_enums):
@@ -218,6 +217,9 @@ def member_length(version, fe_class, fe_member, existing_classes, existing_enums
         if base_type in of_base_lengths:
             bytes, length_fixed = of_base_lengths[base_type]
         else:
-            raise Exception("Unknown type for {}.{}: {}".format(fe_class.name, fe_member.name, base_type))
+            raise Exception(
+                f"Unknown type for {fe_class.name}.{fe_member.name}: {base_type}"
+            )
+
 
     return (count * bytes), length_fixed

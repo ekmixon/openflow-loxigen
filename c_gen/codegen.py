@@ -72,9 +72,12 @@ def push_wire_types_data(uclass):
 
     # Merge versions with identical type members
     all_versions = sorted(type_members_by_version.keys())
-    versioned_type_members = []
-    for pwtms, versions in groupby(all_versions, type_members_by_version.get):
-        versioned_type_members.append((pwtms, list(versions)))
+    versioned_type_members = [
+        (pwtms, list(versions))
+        for pwtms, versions in groupby(
+            all_versions, type_members_by_version.get
+        )
+    ]
 
     return PushWireTypesData(
         class_name=uclass.name,
@@ -146,15 +149,14 @@ def generate_lists(install_dir):
         cls, e_cls = loxi_utils_legacy.list_name_extract(oftype)
         e_cls = e_cls[:-2]
         e_uclass = loxi_globals.unified.class_by_name(e_cls)
-        with template_utils.open_output(install_dir, "loci/src/%s.c" % cls) as out:
+        with template_utils.open_output(install_dir, f"loci/src/{cls}.c") as out:
             util.render_template(out, "list.c", cls=cls, e_cls=e_cls, e_uclass=e_uclass,
                                  wire_length_get=class_metadata_dict[e_cls].wire_length_get)
             # Append legacy generated code
             c_code_gen.gen_new_function_definitions(out, cls)
 
 def generate_strings(install_dir):
-    object_id_strs = []
-    object_id_strs.append("of_object")
+    object_id_strs = ["of_object"]
     object_id_strs.extend(of_g.ordered_messages)
     object_id_strs.extend(of_g.ordered_non_messages)
     object_id_strs.extend(of_g.ordered_list_objects)
@@ -184,11 +186,14 @@ class_metadata_dict = {}
 
 # These classes have handwritten C code to get/set their length fields
 # See templates/of_type_maps.c
-special_length_classes = set([
-    'of_packet_queue', 'of_meter_stats', 'of_port_desc',
-    'of_port_stats_entry', 'of_queue_stats_entry',
+special_length_classes = {
+    'of_packet_queue',
+    'of_meter_stats',
+    'of_port_desc',
+    'of_port_stats_entry',
+    'of_queue_stats_entry',
     'of_queue_desc',
-])
+}
 
 def build_class_metadata():
     for uclass in loxi_globals.unified.classes:
@@ -198,11 +203,11 @@ def build_class_metadata():
         wire_type_set = 'NULL'
 
         if uclass and not uclass.virtual and uclass.has_type_members:
-            wire_type_set = '%s_push_wire_types' % uclass.name
+            wire_type_set = f'{uclass.name}_push_wire_types'
 
         root = uclass.inheritance_root()
         if root and root.name != 'of_header':
-            wire_type_get = root.name + '_wire_object_id_get'
+            wire_type_get = f'{root.name}_wire_object_id_get'
 
         if uclass.is_message:
             wire_length_get = 'of_object_message_wire_length_get'
@@ -210,8 +215,8 @@ def build_class_metadata():
         elif uclass.is_oxm:
             wire_length_get = 'of_oxm_wire_length_get'
         elif uclass.name in special_length_classes:
-            wire_length_get = '%s_wire_length_get' % uclass.name
-            wire_length_set = '%s_wire_length_set' % uclass.name
+            wire_length_get = f'{uclass.name}_wire_length_get'
+            wire_length_set = f'{uclass.name}_wire_length_set'
         elif loxi_utils_legacy.class_is_tlv16(uclass.name):
             wire_length_set = 'of_tlv16_wire_length_set'
             wire_length_get = 'of_tlv16_wire_length_get'

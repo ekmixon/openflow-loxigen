@@ -78,6 +78,8 @@ def var_name_map(m_type):
 
     Used mostly in test code generation, but also for the dup functions.
     """
+    if m_type.find("of_list_") == 0:
+        return "list"
     _var_name_map= dict(
         uint8_t="val8",
         uint16_t="val16",
@@ -114,11 +116,11 @@ def var_name_map(m_type):
         of_port_desc_prop_bsn_diag_t="port_desc_prop_bsn_diag",
         )
 
-    if m_type.find("of_list_") == 0:
-        return "list"
-    if m_type in of_g.of_mixed_types:
-        return of_g.of_mixed_types[m_type]["short_name"]
-    return _var_name_map[m_type]
+    return (
+        of_g.of_mixed_types[m_type]["short_name"]
+        if m_type in of_g.of_mixed_types
+        else _var_name_map[m_type]
+    )
 
 integer_types = ["uint8_t", "uint16_t", "uint32_t", "uint64_t",
                  "of_port_no_t", "of_fm_cmd_t", "of_wc_bmap_t",
@@ -145,14 +147,15 @@ def ignore_member(cls, version, m_name, m_type):
     or whose types we're not ready to deal with yet.
     """
 
-    uclass = loxi_globals.unified.class_by_name(cls)
-    if not uclass:
-        return True
+    if uclass := loxi_globals.unified.class_by_name(cls):
+        return (
+            loxi_utils.skip_member_name(m_name) or m_type not in scalar_types
+            if isinstance(uclass.member_by_name(m_name), OFDataMember)
+            else True
+        )
 
-    if not isinstance(uclass.member_by_name(m_name), OFDataMember):
+    else:
         return True
-
-    return loxi_utils.skip_member_name(m_name) or m_type not in scalar_types
 
 def gen_fill_string(out):
     out.write("""
@@ -513,7 +516,7 @@ run_%s_scalar_acc_tests(void)
             if type_maps.class_is_virtual(cls):
                 continue
             if version in of_g.unified[cls]:
-                test_name = "%s_%s" % (cls, v_name)
+                test_name = f"{cls}_{v_name}"
                 out.write("    RUN_TEST(%s_scalar);\n" % test_name)
         out.write("    return TEST_PASS;\n}\n");
 
@@ -603,7 +606,7 @@ test_%(cls)s_%(v_name)s_scalar(void)
 def scalar_member_types_get(cls, version):
     member_types = []
 
-    if not version in of_g.unified[cls]:
+    if version not in of_g.unified[cls]:
         return ([], [])
 
     if "use_version" in of_g.unified[cls][version]:
@@ -618,7 +621,7 @@ def scalar_member_types_get(cls, version):
         if (not loxi_utils.type_is_scalar(m_type) or
             ignore_member(cls, version, m_name, m_type)):
             continue
-        if not m_type in member_types:
+        if m_type not in member_types:
             member_types.append(m_type)
 
     return (members, member_types)
@@ -851,7 +854,7 @@ run_list_tests(void)
         v_name = loxi_utils.version_to_name(version)
         for cls in of_g.ordered_list_objects:
             if version in of_g.unified[cls]:
-                test_name = "%s_%s" % (cls, v_name)
+                test_name = f"{cls}_{v_name}"
                 out.write("    RUN_TEST(%s);\n" % test_name)
 
     out.write("\n    return TEST_PASS;\n}\n");
@@ -1180,9 +1183,7 @@ int
         check_instance(out, cls, base_type, "elt_p", v_name,
                        version, True)
     else:
-        count = 0
-        for instance, subcls in sub_classes:
-            count += 1
+        for count, (instance, subcls) in enumerate(sub_classes, start=1):
             check_instance(out, cls, subcls, instance, v_name,
                            version, count==len(sub_classes))
     out.write("""
@@ -1574,7 +1575,7 @@ run_%s_unified_accessor_tests(void)
                 continue
             if type_maps.class_is_virtual(cls):
                 continue
-            test_name = "%s_%s" % (cls, v_name)
+            test_name = f"{cls}_{v_name}"
             out.write("    RUN_TEST(%s);\n" % test_name)
         out.write("    return TEST_PASS;\n}\n");
 
@@ -1933,7 +1934,7 @@ test_dump_objs(void)
     /* Call each obj dump function */
 """)
     for version in of_g.of_version_range:
-        for j, cls in enumerate(of_g.all_class_order):
+        for cls in of_g.all_class_order:
             if not loxi_utils.class_in_version(cls, version):
                 continue
             if type_maps.class_is_virtual(cls):
@@ -2019,7 +2020,7 @@ def gen_datafiles_tests(out, name):
     tests = []
     for filename in test_data.list_files():
         data = test_data.read(filename)
-        if not 'c' in data:
+        if 'c' not in data:
             continue
         name = filename[:-5].replace("/", "_")
         tests.append(dict(name=name,

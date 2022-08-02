@@ -106,14 +106,14 @@ def process_input_file(filename):
         with open(filename, encoding='utf-8') as f:
             ast = parser.parse(f.read())
     except pyparsing.ParseBaseException as e:
-        print("Parse error in %s: %s" % (os.path.basename(filename), str(e)))
+        print(f"Parse error in {os.path.basename(filename)}: {str(e)}")
         sys.exit(1)
 
     # Create the OFInput from the AST
     try:
         ofinput = frontend.create_ofinput(os.path.basename(filename), ast)
     except frontend.InputError as e:
-        print("Error in %s: %s" % (os.path.basename(filename), str(e)))
+        print(f"Error in {os.path.basename(filename)}: {str(e)}")
         sys.exit(1)
 
     return ofinput
@@ -126,14 +126,14 @@ def read_input():
     """
 
     ofinputs_by_version = defaultdict(lambda: [])
-    filenames = sorted(glob.glob("%s/openflow_input/*" % root_dir))
+    filenames = sorted(glob.glob(f"{root_dir}/openflow_input/*"))
 
     # Ignore emacs backup files
     filenames = [x for x in filenames if not x.endswith('~')]
 
     # Read input files
     for filename in filenames:
-        log("Processing struct file: " + filename)
+        log(f"Processing struct file: {filename}")
         ofinput = process_input_file(filename)
 
         for wire_version in ofinput.wire_versions:
@@ -164,10 +164,10 @@ if __name__ == '__main__':
     (options, args, target_versions) = cmdline.process_commandline()
     # @fixme Use command line params to select log
 
-    logging.basicConfig(level = logging.INFO if not options.verbose else logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG if options.verbose else logging.INFO)
 
     # Import the language file
-    lang_file = "lang_%s" % options.lang
+    lang_file = f"lang_{options.lang}"
     lang_module = __import__(lang_file)
 
     log("\nGenerating files for target language %s\n" % options.lang)

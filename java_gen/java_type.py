@@ -10,11 +10,7 @@ import loxi_utils.loxi_utils as loxi_utils
 from functools import reduce
 
 def erase_type_annotation(class_name):
-    m=re.match(r'(.*)<.*>', class_name)
-    if m:
-        return m.group(1)
-    else:
-        return class_name
+    return m.group(1) if (m := re.match(r'(.*)<.*>', class_name)) else class_name
 
 def name_c_to_camel(name):
     """ 'of_stats_reply' -> 'ofStatsReply' """
@@ -59,17 +55,18 @@ def format_primitive_literal(t, value):
 
     max = (1 << bits)-1
     if value > max:
-        raise Exception("Value %s to large for type %s" % (value, t))
+        raise Exception(f"Value {value} to large for type {t}")
 
     if signed:
         max_pos = (1 << (bits-1)) - 1
 
-        if  value > max_pos:
-            if t == "long":
-                return str((1 << bits) - value)
-            else:
-                return "(%s) 0x%x" % (t, value)
-    return "%s0x%x%s" % ("(%s) " % t if cast_needed else "", value, "L" if t=="long" else "")
+        if value > max_pos:
+            return str((1 << bits) - value) if t == "long" else "(%s) 0x%x" % (t, value)
+    return "%s0x%x%s" % (
+        f"({t}) " if cast_needed else "",
+        value,
+        "L" if t == "long" else "",
+    )
 
 
 ANY = 0xFFFFFFFFFFFFFFFF
@@ -150,7 +147,7 @@ class JType(object):
     def get_op(self, op_type, version, pub_type, default_value, arguments):
         ver = ANY if version is None else version.int_version
 
-        if not "version" in arguments:
+        if "version" not in arguments:
             arguments["version"] = version.dotless_version
 
         def lookup(ver, pub_type):
@@ -163,7 +160,11 @@ class JType(object):
         if callable(_op):
             return _op(**arguments)
         else:
-            return reduce(lambda a,repl: a.replace("$%s" % repl[0], str(repl[1])),  arguments.items(), _op)
+            return reduce(
+                lambda a, repl: a.replace(f"${repl[0]}", str(repl[1])),
+                arguments.items(),
+                _op,
+            )
 
     def read_op(self, version=None, length=None, pub_type=True):
         """ return a Java stanza that reads a value of this JType from ByteBuf bb.
@@ -180,10 +181,13 @@ class JType(object):
              # (2) readerIndex at the start of the message has been stored in 'start'
             length = "length - (bb.readerIndex() - start)"
 
-        return self.get_op("read", version, pub_type,
-            default_value='ChannelUtilsVer$version.read%s(bb)' % self.pub_type,
-            arguments=dict(length=length)
-            )
+        return self.get_op(
+            "read",
+            version,
+            pub_type,
+            default_value=f'ChannelUtilsVer$version.read{self.pub_type}(bb)',
+            arguments=dict(length=length),
+        )
 
     def write_op(self, version=None, name=None, pub_type=True):
         """ return a Java stanza that writes a value of this JType contained in Java expression
@@ -194,10 +198,13 @@ class JType(object):
         @return string containing generated Java expression.
         """
 
-        return self.get_op("write", version, pub_type,
-            default_value='ChannelUtilsVer$version.write%s(bb, $name)' % self.pub_type,
-            arguments=dict(name=name)
-            )
+        return self.get_op(
+            "write",
+            version,
+            pub_type,
+            default_value=f'ChannelUtilsVer$version.write{self.pub_type}(bb, $name)',
+            arguments=dict(name=name),
+        )
 
 
     def default_op(self, version=None, pub_type=True):
@@ -205,9 +212,12 @@ class JType(object):
         @param version JavaOFVersion
         @return string containing generated Java expression.
         """
-        return self.get_op("default", version, pub_type,
-            arguments = dict(),
-            default_value = self.format_value(0) if self.is_primitive else "null"
+        return self.get_op(
+            "default",
+            version,
+            pub_type,
+            arguments={},
+            default_value=self.format_value(0) if self.is_primitive else "null",
         )
 
     def normalize_op(self, version=None, name=None, pub_type=True):
@@ -229,9 +239,14 @@ class JType(object):
 
     def funnel_op(self, version=None, name=None, pub_type=True):
         t = self.pub_type if pub_type else self.priv_type
-        return self.get_op("funnel", version, pub_type,
-            arguments = dict(name=name),
-            default_value =  '$name.putTo(sink)' if not self._is_primitive(pub_type) else "sink.put{}($name)".format(t[0].upper() + t[1:])
+        return self.get_op(
+            "funnel",
+            version,
+            pub_type,
+            arguments=dict(name=name),
+            default_value=f"sink.put{t[0].upper() + t[1:]}($name)"
+            if self._is_primitive(pub_type)
+            else '$name.putTo(sink)',
         )
 
     @property
@@ -255,40 +270,39 @@ class JType(object):
 # Create a default mapping for a list type. Type defauls to List<${java_mapping_of_name}>
 def gen_enum_jtype(java_name, is_bitmask=False):
     if is_bitmask:
-        java_type = "Set<{}>".format(java_name)
-        default_value = "ImmutableSet.<{}>of()".format(java_name)
+        java_type = f"Set<{java_name}>"
+        default_value = f"ImmutableSet.<{java_name}>of()"
     else:
         java_type = java_name
         default_value = "null"
 
-    serializer = "{}SerializerVer$version".format(java_name)
+    serializer = f"{java_name}SerializerVer$version"
 
-    return JType(java_type)\
-            .op(read="{}.readFrom(bb)".format(serializer),
-                write="{}.writeTo(bb, $name)".format(serializer),
-                default=default_value,
-                funnel="{}.putTo($name, sink)".format(serializer)
-               )
+    return JType(java_type).op(
+        read=f"{serializer}.readFrom(bb)",
+        write=f"{serializer}.writeTo(bb, $name)",
+        default=default_value,
+        funnel=f"{serializer}.putTo($name, sink)",
+    )
 
 def gen_list_jtype(java_base_name):
     # read op assumes the class has a public final static field READER that implements
     # OFMessageReader<$class> i.e., can deserialize an instance of class from a ByteBuf
     # write op assumes class implements Writeable
-    return JType("List<{}>".format(java_base_name)) \
-        .op(
-            read= 'ChannelUtils.readList(bb, $length, {}Ver$version.READER)'.format(java_base_name), \
-            write='ChannelUtils.writeList(bb, $name)',
-            default="ImmutableList.<{}>of()".format(java_base_name),
-            funnel='FunnelUtils.putList($name, sink)'
-            )
+    return JType(f"List<{java_base_name}>").op(
+        read=f'ChannelUtils.readList(bb, $length, {java_base_name}Ver$version.READER)',
+        write='ChannelUtils.writeList(bb, $name)',
+        default=f"ImmutableList.<{java_base_name}>of()",
+        funnel='FunnelUtils.putList($name, sink)',
+    )
 
 def gen_fixed_length_string_jtype(length):
     return JType('String').op(
-              read='ChannelUtils.readFixedLengthString(bb, {})'.format(length),
-              write='ChannelUtils.writeFixedLengthString(bb, $name, {})'.format(length),
-              default='""',
-              funnel='sink.putUnencodedChars($name)'
-            )
+        read=f'ChannelUtils.readFixedLengthString(bb, {length})',
+        write=f'ChannelUtils.writeFixedLengthString(bb, $name, {length})',
+        default='""',
+        funnel='sink.putUnencodedChars($name)',
+    )
 
 ##### Predefined JType mappings
 # FIXME: This list needs to be pruned / cleaned up. Most of these are schematic.
@@ -910,23 +924,23 @@ def enum_java_types():
     return enum_types
 
 def make_match_field_jtype(sub_type_name="?"):
-    return JType("MatchField<{}>".format(sub_type_name))
+    return JType(f"MatchField<{sub_type_name}>")
 
 def make_stat_field_jtype(sub_type_name="?"):
-    return JType("StatField<{}>".format(sub_type_name))
+    return JType(f"StatField<{sub_type_name}>")
 
 def make_oxm_jtype(sub_type_name="?"):
-    return JType("OFOxm<{}>".format(sub_type_name))
+    return JType(f"OFOxm<{sub_type_name}>")
 
 def make_oxs_jtype(sub_type_name="?"):
-    return JType("OFOxs<{}>".format(sub_type_name))
+    return JType(f"OFOxs<{sub_type_name}>")
 
 def list_cname_to_java_name(c_type):
     m = re.match(r'list\(of_([a-zA-Z_]+)_t\)', c_type)
     if not m:
-        raise Exception("Not a recgonized standard list type declaration: %s" % c_type)
-    base_name = m.group(1)
-    return "OF" + name_c_to_caps_camel(base_name)
+        raise Exception(f"Not a recgonized standard list type declaration: {c_type}")
+    base_name = m[1]
+    return f"OF{name_c_to_caps_camel(base_name)}"
 
 #### main entry point for conversion of LOXI types (c_types) Java types.
 # FIXME: This badly needs a refactoring

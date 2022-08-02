@@ -35,7 +35,7 @@ lit = P.Literal
 # shows up in the result)
 tag = lambda name: P.Empty().setParseAction(P.replaceWith(name))
 
-word = P.Word(P.alphanums + '_')
+word = P.Word(f'{P.alphanums}_')
 integer = (
             P.Combine('0x' - P.Word('0123456789abcdefABCDEF') |
             P.Word('0123456789'))
@@ -46,7 +46,10 @@ identifier = word.copy().setName("identifier")
 # Type names
 enum_type = kw("enum") - word
 scalar_type = tag("scalar") + word
-array_type = tag("array") + P.Combine(word + lit('[') - P.Word(P.alphanums + '_') - lit(']'))
+array_type = tag("array") + P.Combine(
+    word + lit('[') - P.Word(f'{P.alphanums}_') - lit(']')
+)
+
 list_type = tag("list") + P.Combine(kw('list') - lit('(') - identifier - lit(')'))
 any_type = P.Group(enum_type | array_type | list_type | scalar_type).setName("type name")
 

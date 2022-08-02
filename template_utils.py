@@ -57,7 +57,7 @@ def render_static(out, name, path):
     # Reuse the tenjin logic for finding the template
     template_filename = tenjin.FileSystemLoader().find(name, path)
     if not template_filename:
-        raise ValueError("template %s not found" % name)
+        raise ValueError(f"template {name} not found")
     with open(template_filename) as infile:
         out.write(infile.read())
 
@@ -82,7 +82,7 @@ def open_output(install_dir, name):
 
     'name' may include slashes. Subdirectories will be automatically created.
     """
-    print(("Writing %s to %s" % (name, install_dir)))
+    print(f"Writing {name} to {install_dir}")
     path = os.path.join(install_dir, name)
     dirpath = os.path.dirname(path)
     if not os.path.exists(dirpath):

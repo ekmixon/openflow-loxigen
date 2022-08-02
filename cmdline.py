@@ -49,16 +49,13 @@ def version_list_normalize(vlist):
     """
     out_list = []
     # @fixme Map to OF version references
-    if vlist.find(',') > 0:
-        vlist = vlist.split(',')
-    else:
-        vlist = vlist.split()
+    vlist = vlist.split(',') if vlist.find(',') > 0 else vlist.split()
     vlist.sort()
     for ver in vlist:
         try:
             out_list.append(OFVersions.from_string(ver))
         except KeyError:
-            sys.stderr.write("Bad version input, %s" % str(ver))
+            sys.stderr.write(f"Bad version input, {str(ver)}")
             sys.exit(1)
     return out_list
 
@@ -77,9 +74,13 @@ def process_commandline(default_vals=options_default):
     parser.add_option("-l", "--lang", "--language",
                       default=default_vals["lang"],
                       help="Select the target language: c, python, python3")
-    parser.add_option("-i", "--install-dir",
-                      default=default_vals["install-dir"],
-                      help="Directory to install generated files to (default %s)" % default_vals["install-dir"])
+    parser.add_option(
+        "-i",
+        "--install-dir",
+        default=default_vals["install-dir"],
+        help=f'Directory to install generated files to (default {default_vals["install-dir"]})',
+    )
+
     parser.add_option("-v", "--verbose",
                       action="store_true", default=False,
                       help="Debug output")

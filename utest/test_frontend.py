@@ -110,7 +110,7 @@ struct of_packet_queue {
         self.assertEqual(expected_ast, ast)
 
         ofinput = frontend.create_ofinput("standard-1.0", ast)
-        self.assertEqual(set([1, 2]), ofinput.wire_versions)
+        self.assertEqual({1, 2}, ofinput.wire_versions)
         expected_classes = [
             OFClass(name='of_echo_reply', superclass=None, members=[
                 OFDataMember('version', 'uint8_t'), # XXX

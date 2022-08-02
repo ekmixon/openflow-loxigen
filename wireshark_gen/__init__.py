@@ -40,9 +40,7 @@ DissectorField = namedtuple("DissectorField", ["fullname", "name", "type", "base
 
 proto_names = { 1: 'of10', 2: 'of11', 3: 'of12', 4: 'of13', 5: 'of14' , 6: 'of15' }
 def make_field_name(version, ofclass_name, member_name):
-    return "%s.%s.%s" % (proto_names[version.wire_version],
-                         ofclass_name[3:],
-                         member_name)
+    return f"{proto_names[version.wire_version]}.{ofclass_name[3:]}.{member_name}"
 
 def get_reader(version, cls, m):
     """
@@ -82,10 +80,7 @@ def get_field_info(version, cls, name, oftype):
         field_type = "bytes"
 
     if enum:
-        if enum.is_bitmask:
-            field_base = "HEX"
-        else:
-            field_base = "DEC"
+        field_base = "HEX" if enum.is_bitmask else "DEC"
     elif oftype in field_info.field_to_base:
         field_base = field_info.field_to_base[name]
     elif oftype in field_info.oftype_to_base:

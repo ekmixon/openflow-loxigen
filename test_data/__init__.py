@@ -42,9 +42,12 @@ def list_files():
     result = []
     for dirname, dirnames, filenames in os.walk(_test_data_dir):
         dirname = os.path.relpath(dirname, _test_data_dir)
-        for filename in filenames:
-            if filename.endswith('.data') and not filename.startswith('.'):
-                result.append(dirname + '/' + filename)
+        result.extend(
+            f'{dirname}/{filename}'
+            for filename in filenames
+            if filename.endswith('.data') and not filename.startswith('.')
+        )
+
     return sorted(result)
 
 def glob(pattern):
@@ -77,7 +80,10 @@ def read(name):
             elif line.startswith('--'):
                 cur_section = line[2:].strip()
                 if cur_section in section_lines:
-                    raise Exception("section %s already exists in test data file %s" % (cur_section, name))
+                    raise Exception(
+                        f"section {cur_section} already exists in test data file {name}"
+                    )
+
                 section_lines[cur_section] = []
             elif cur_section:
                 section_lines[cur_section].append(line)

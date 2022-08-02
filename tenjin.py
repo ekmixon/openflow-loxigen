@@ -138,28 +138,27 @@ def _dummy():
         if encode:
             if decode:
                 raise ValueError("can't specify both encode and decode encoding.")
-            else:
-                def to_str(val,   _str=str, _bytes=bytes, _isa=isinstance, _encode=encode):
-                    """Convert val into string or return '' if None. Unicode(=str) will be encoded into bytes."""
-                    if _isa(val, _str):   return val.encode(_encode)  # unicode(=str) to binary
-                    if val is None:       return ''
-                    if _isa(val, _bytes): return val
-                    return _str(val).encode(_encode)
+            def to_str(val,   _str=str, _bytes=bytes, _isa=isinstance, _encode=encode):
+                """Convert val into string or return '' if None. Unicode(=str) will be encoded into bytes."""
+                if _isa(val, _str):   return val.encode(_encode)  # unicode(=str) to binary
+                if val is None:       return ''
+                return val if _isa(val, _bytes) else _str(val).encode(_encode)
+
         else:
             if decode:
                 def to_str(val,   _str=str, _bytes=bytes, _isa=isinstance, _decode=decode):
                     """Convert val into string or return '' if None. Bytes will be decoded into unicode(=str)."""
                     if _isa(val, _str):    return val
                     if val is None:        return ''
-                    if _isa(val, _bytes):  return val.decode(_decode)  # binary to unicode(=str)
-                    return _str(val)
+                    return val.decode(_decode) if _isa(val, _bytes) else _str(val)
+
             else:
                 def to_str(val,   _str=str, _bytes=bytes, _isa=isinstance):
                     """Convert val into string or return '' if None. Both bytes and unicode(=str) will be retruned as-is."""
                     if _isa(val, _str):    return val
                     if val is None:        return ''
-                    if _isa(val, _bytes):  return val
-                    return _str(val)
+                    return val if _isa(val, _bytes) else _str(val)
+
         return to_str
 
     to_str = generate_tostrfunc(decode='utf-8')
@@ -250,11 +249,11 @@ def _dummy():
 
     def _p(arg):
         """ex. '/show/'+_p("item['id']") => "/show/#{item['id']}" """
-        return '<`#%s#`>' % arg    # decoded into #{...} by preprocessor
+        return f'<`#{arg}#`>'
 
     def _P(arg):
         """ex. '<b>%s</b>' % _P("item['id']") => "<b>${item['id']}</b>" """
-        return '<`$%s$`>' % arg    # decoded into ${...} by preprocessor
+        return f'<`${arg}$`>'
 
     def _decode_params(s):
         """decode <`#...#`> and <`$...$`> into #{...} and ${...}"""
@@ -414,9 +413,11 @@ def _dummy():
 
     def nl2br(text):
         """replace "\n" to "<br />\n" and return it."""
-        if not text:
-            return _escaped.as_escaped('')
-        return _escaped.as_escaped(text.replace('\n', '<br />\n'))
+        return (
+            _escaped.as_escaped(text.replace('\n', '<br />\n'))
+            if text
+            else _escaped.as_escaped('')
+        )
 
     def text2html(text, use_nbsp=True):
         """(experimental) escape xml characters, replace "\n" to "<br />\n", and return it."""
@@ -497,13 +498,27 @@ class TemplateSyntaxError(SyntaxError):
 
     def build_error_message(self):
         ex = self
-        if not ex.text:
-            return self.args[0]
-        return ''.join([
-            "%s:%s:%s: %s\n" % (ex.filename, ex.lineno, ex.offset, ex.msg, ),
-            "%4d: %s\n"      % (ex.lineno, ex.text.rstrip(), ),
-            "     %s^\n"     % (' ' * ex.offset, ),
-        ])
+        return (
+            ''.join(
+                [
+                    "%s:%s:%s: %s\n"
+                    % (
+                        ex.filename,
+                        ex.lineno,
+                        ex.offset,
+                        ex.msg,
+                    ),
+                    "%4d: %s\n"
+                    % (
+                        ex.lineno,
+                        ex.text.rstrip(),
+                    ),
+                    "     %s^\n" % (' ' * ex.offset,),
+                ]
+            )
+            if ex.text
+            else ex.args[0]
+        )
 
 
 class Template(object):
@@ -591,11 +606,11 @@ class Template(object):
         self._localvars_assignments_added = False
 
     def _localvars_assignments(self):
-        return "_extend=_buf.extend;_to_str=%s;_escape=%s; " % (self.tostrfunc, self.escapefunc)
+        return f"_extend=_buf.extend;_to_str={self.tostrfunc};_escape={self.escapefunc}; "
 
     def before_convert(self, buf):
         if self.preamble:
-            eol = self.input.startswith('<?py') and "\n" or "; "
+            eol = "\n" if self.input.startswith('<?py') else "; "
             buf.append(self.preamble + eol)
 
     def after_convert(self, buf):
@@ -619,7 +634,6 @@ class Template(object):
            filename:str (=None)
              Filename of input. this is optional but recommended to report errors.
         """
-        pass
         self._reset(input, filename)
         buf = []
         self.before_convert(buf)
@@ -650,12 +664,9 @@ class Template(object):
             index = m.end()
             ## detect spaces at beginning of line
             lspace = None
-            if text == '':
-                if is_bol:
-                    lspace = ''
-            elif text[-1] == '\n':
+            if text == '' and is_bol or text != '' and text[-1] == '\n':
                 lspace = ''
-            else:
+            elif text != '':
                 rindex = text.rfind('\n')
                 if rindex < 0:
                     if is_bol and text.isspace():
@@ -676,13 +687,11 @@ class Template(object):
                 code = (code or "") + "\n"
             if code:
                 code = self.statement_hook(code)
-                m = self._match_to_args_declaration(code)
-                if m:
+                if m := self._match_to_args_declaration(code):
                     self._add_args_declaration(buf, m)
                 else:
                     self.add_stmt(buf, code)
-        rest = input[index:]
-        if rest:
+        if rest := input[index:]:
             self.parse_exprs(buf, rest)
         self._arrange_indent(buf)
 
@@ -757,11 +766,9 @@ class Template(object):
                 if flag_bol and not flags[0] and input[pos:pos+nl_len] == nl:
                     pos += nl_len
                     buf.append("\n")
-        if smarttrim:
-            if buf and buf[-1] == "\n":
-                buf.pop()
-        rest = input[pos:]
-        if rest:
+        if smarttrim and buf and buf[-1] == "\n":
+            buf.pop()
+        if rest := input[pos:]:
             self.add_text(buf, rest, True)
         self.stop_text_part(buf)
         if input[-1] == '\n':
@@ -790,9 +797,11 @@ class Template(object):
         use_unicode = self.encoding and python2
         buf.append(use_unicode and "'''" or "'''")
         text = self._quote_text(text)
-        if   not encode_newline:    buf.extend((text,       "''', "))
-        elif text.endswith("\r\n"): buf.extend((text[0:-2], "\\r\\n''', "))
-        elif text.endswith("\n"):   buf.extend((text[0:-1], "\\n''', "))
+        if not encode_newline:    buf.extend((text,       "''', "))
+        elif text.endswith("\r\n"):
+            buf.extend((text[:-2], "\\r\\n''', "))
+        elif text.endswith("\n"):
+            buf.extend((text[:-1], "\\n''', "))
         else:                       buf.extend((text,       "''', "))
 
     _add_text = add_text
@@ -873,8 +882,6 @@ class Template(object):
             if self.depth > 0:
                 fname, linenum, colnum, linetext = self.filename, len(lines), None, None
                 raise TemplateSyntaxError("unexpected EOF.", (fname, linenum, colnum, linetext))
-        else:
-            pass
         return block
 
     def _parse_lines(self, lines_iter, end_block, block, linenum):
@@ -893,7 +900,7 @@ class Template(object):
                 continue
             word = m.group(0)
             if word in _END_WORDS:
-                if word != end_block and word != '#end':
+                if word not in [end_block, '#end']:
                     if end_block is False:
                         msg = "'%s' found but corresponding statement is missing." % (word, )
                     else:
@@ -909,12 +916,21 @@ class Template(object):
                     self.depth += 1
                     cont_word = None
                     try:
-                        child_block, line, cont_word, linenum = \
-                            self._parse_lines(lines_iter, '#end'+word, [], linenum)
+                        child_block, line, cont_word, linenum = self._parse_lines(
+                            lines_iter, f'#end{word}', [], linenum
+                        )
+
                         block.extend((child_block, line, ))
                         while cont_word:   # 'elif' or 'else:'
-                            child_block, line, cont_word, linenum = \
-                                self._parse_lines(lines_iter, '#end'+word, [], linenum)
+                            (
+                                child_block,
+                                line,
+                                cont_word,
+                                linenum,
+                            ) = self._parse_lines(
+                                lines_iter, f'#end{word}', [], linenum
+                            )
+
                             block.extend((child_block, line, ))
                     except StopIteration:
                         msg = "'%s' is not closed." % (cont_word or word)
@@ -987,7 +1003,7 @@ class Template(object):
             try:
                 return ''.join(_buf)
             except UnicodeDecodeError as ex:
-                logger.error("[tenjin.Template] " + str(ex))
+                logger.error(f"[tenjin.Template] {str(ex)}")
                 logger.error("[tenjin.Template] (_buf=%r)" % (_buf, ))
                 raise
 
@@ -1010,7 +1026,7 @@ class Preprocessor(Template):
     def add_expr(self, buf, code, *flags):
         if not code or code.isspace():
             return
-        code = "_decode_params(%s)" % code
+        code = f"_decode_params({code})"
         Template.add_expr(self, buf, code, *flags)
 
 
@@ -1052,13 +1068,14 @@ class PrefixedLinePreprocessor(object):
         self.regexp = re.compile(r'^([ \t]*)' + prefix + r'(.*)', re.M)
 
     def convert_prefixed_lines(self, text):
-        fn = lambda m: "%s<?py%s ?>" % (m.group(1), m.group(2))
+        fn = lambda m: f"{m.group(1)}<?py{m.group(2)} ?>"
         return self.regexp.sub(fn, text)
 
     STMT_REXP = re.compile(r'<\?py\s.*?\?>', re.S)
 
     def __call__(self, input, **kwargs):
-        buf = []; append = buf.append
+        buf = []
+        append = buf.append
         pos = 0
         for m in self.STMT_REXP.finditer(input):
             text = input[pos:m.start()]
@@ -1066,8 +1083,8 @@ class PrefixedLinePreprocessor(object):
             pos = m.end()
             if text: append(self.convert_prefixed_lines(text))
             append(stmt)
-        rest = input[pos:]
-        if rest: append(self.convert_prefixed_lines(rest))
+        if rest := input[pos:]:
+            append(self.convert_prefixed_lines(rest))
         return "".join(buf)
 
 
@@ -1100,18 +1117,20 @@ class JavaScriptPreprocessor(object):
             pos = m.end()
             if funcdecl:
                 if curr_funcdecl:
-                    raise ParseError("%s is nested in %s. (file: %s, line: %s)" % \
-                                         (funcdecl, curr_funcdecl, filename, _linenum(input, m.start()), ))
+                    raise ParseError(
+                        f"{funcdecl} is nested in {curr_funcdecl}. (file: {filename}, line: {_linenum(input, m.start())})"
+                    )
+
                 curr_funcdecl = funcdecl
-            else:
-                if not curr_funcdecl:
-                    raise ParseError("unexpected '<!-- #/JS -->'. (file: %s, line: %s)" % \
-                                         (filename, _linenum(input, m.start()), ))
+            elif curr_funcdecl:
                 curr_funcdecl = None
+            else:
+                raise ParseError("unexpected '<!-- #/JS -->'. (file: %s, line: %s)" % \
+                                         (filename, _linenum(input, m.start()), ))
             yield text, lspace, funcdecl, rspace, False
         if curr_funcdecl:
             raise ParseError("%s is not closed by '<!-- #/JS -->'. (file: %s, line: %s)" % \
-                                 (curr_funcdecl, filename, _linenum(input, m.start()), ))
+                                     (curr_funcdecl, filename, _linenum(input, m.start()), ))
         rest = input[pos:]
         yield rest, None, None, None, True
 
@@ -1131,11 +1150,22 @@ class JavaScriptPreprocessor(object):
                     buf.extend((lspace or '', stag, 'function ', funcdecl, "{var _buf='';", rspace or ''))
                 else:
                     m = re.match(r'(.+?)\((.*)\)', funcdecl)
-                    buf.extend((lspace or '', stag, m.group(1), '=function(', m.group(2), "){var _buf='';", rspace or ''))
+                    buf.extend(
+                        (
+                            lspace or '',
+                            stag,
+                            m[1],
+                            '=function(',
+                            m[2],
+                            "){var _buf='';",
+                            rspace or '',
+                        )
+                    )
+
             else:
                 self._parse_stmts(text, buf)
                 buf.extend((lspace or '', "return _buf;};", etag, rspace or ''))
-            #
+                #
         buf.append(text)
 
     STMT_REXP = re.compile(r'(?:^( *)<|<)\?js(\s.*?) ?\?>([ \t]*\r?\n)?', re.M | re.S)
@@ -1210,8 +1240,7 @@ class JavaScriptPreprocessor(object):
             if code:
                 extend((op, escape_p and '_E(' or '_S(', code, ')'))
                 op = '+'
-        rest = text
-        if rest:
+        if rest := text:
             extend((op, self._escape_text(rest)))
         if input.endswith("\n"):
             buf.append(";\n")
@@ -1229,7 +1258,7 @@ class JavaScriptPreprocessor(object):
 
 
 def _linenum(input, pos):
-    return input[0:pos].count("\n") + 1
+    return input[:pos].count("\n") + 1
 
 
 JS_FUNC = r"""
@@ -1256,8 +1285,7 @@ class CacheStorage(object):
         """get template object. if not found, load attributes from cache file and restore  template object."""
         template = self.items.get(cachepath)
         if not template:
-            dct = self._load(cachepath)
-            if dct:
+            if dct := self._load(cachepath):
                 template = create_template()
                 for k in dct:
                     setattr(template, k, dct[k])
@@ -1288,15 +1316,21 @@ class CacheStorage(object):
 
     def _load(self, cachepath):
         """(abstract) load dict object which represents template object attributes from cache file."""
-        raise NotImplementedError.new("%s#_load(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError.new(
+            f"{self.__class__.__name__}#_load(): not implemented yet."
+        )
 
     def _store(self, cachepath, template):
         """(abstract) load dict object which represents template object attributes from cache file."""
-        raise NotImplementedError.new("%s#_store(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError.new(
+            f"{self.__class__.__name__}#_store(): not implemented yet."
+        )
 
     def _delete(self, cachepath):
         """(abstract) remove template object from cache file."""
-        raise NotImplementedError.new("%s#_delete(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError.new(
+            f"{self.__class__.__name__}#_delete(): not implemented yet."
+        )
 
 
 class MemoryCacheStorage(CacheStorage):
@@ -1325,10 +1359,14 @@ class FileCacheStorage(CacheStorage):
         _write_binary_file(cachepath, data)
 
     def _restore(self, data):
-        raise NotImplementedError("%s._restore(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError(
+            f"{self.__class__.__name__}._restore(): not implemented yet."
+        )
 
     def _dump(self, dct):
-        raise NotImplementedError("%s._dump(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError(
+            f"{self.__class__.__name__}._dump(): not implemented yet."
+        )
 
     def _delete(self, cachepath):
         _ignore_not_found_error(lambda: os.unlink(cachepath))
@@ -1375,18 +1413,15 @@ class TextCacheStorage(FileCacheStorage):
 
     def _dump(self, dct):
         s = dct['script']
-        sb = []
-        sb.append("timestamp: %s\n" % dct['timestamp'])
+        sb = ["timestamp: %s\n" % dct['timestamp']]
         if dct.get('encoding'):
             sb.append("encoding: %s\n" % dct['encoding'])
         if dct.get('args') is not None:
             sb.append("args: %s\n" % ', '.join(dct['args']))
-        sb.append("\n")
-        sb.append(s)
+        sb.extend(("\n", s))
         s = ''.join(sb)
-        if python3:
-            if isinstance(s, str):
-                s = s.encode(dct.get('encoding') or 'utf-8')   ## unicode(=str) to binary
+        if python3 and isinstance(s, str):
+            s = s.encode(dct.get('encoding') or 'utf-8')   ## unicode(=str) to binary
         return s
 
     def _save_data_of(self, template):
@@ -1402,16 +1437,24 @@ class TextCacheStorage(FileCacheStorage):
 class KeyValueStore(object):
 
     def get(self, key, *options):
-        raise NotImplementedError("%s.get(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.get(): not implemented yet."
+        )
 
     def set(self, key, value, *options):
-        raise NotImplementedError("%s.set(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.set(): not implemented yet."
+        )
 
     def delete(self, key, *options):
-        raise NotImplementedError("%s.del(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.del(): not implemented yet."
+        )
 
     def has(self, key, *options):
-        raise NotImplementedError("%s.has(): not implemented yet." % self.__class__.__name__)
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.has(): not implemented yet."
+        )
 
 
 ##

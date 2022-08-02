@@ -81,10 +81,7 @@ class OFReader(object):
     def __init__(self, buf, start=0, length=None):
         self.buf = buf
         self.start = start
-        if length is None:
-            self.length = len(buf) - start
-        else:
-            self.length = length
+        self.length = len(buf) - start if length is None else length
         self.offset = 0
 
     def read(self, fmt):
@@ -105,8 +102,7 @@ class OFReader(object):
         st = struct.Struct(fmt)
         if self.offset + offset + st.size > self.length:
             raise loxi.ProtocolError("Buffer too short")
-        result = st.unpack_from(self.buf, self.start + self.offset + offset)
-        return result
+        return st.unpack_from(self.buf, self.start + self.offset + offset)
 
     def skip(self, length):
         if self.offset + length > self.length:

@@ -112,16 +112,14 @@ def class_is_tlv16(cls):
     m1 = ofclass.members[0]
     m2 = ofclass.members[1]
 
-    if not (isinstance(m1, ir.OFTypeMember) or isinstance(m1, ir.OFDiscriminatorMember)):
+    if not isinstance(m1, (ir.OFTypeMember, ir.OFDiscriminatorMember)):
         return False
 
-    if not isinstance(m2, ir.OFLengthMember):
-        return False
-
-    if m1.oftype != "uint16_t" or m2.oftype != "uint16_t":
-        return False
-
-    return True
+    return (
+        m1.oftype == "uint16_t" and m2.oftype == "uint16_t"
+        if isinstance(m2, ir.OFLengthMember)
+        else False
+    )
 
 def class_is_u16_len(cls):
     """
@@ -137,13 +135,7 @@ def class_is_u16_len(cls):
 
     m = ofclass.members[0]
 
-    if not isinstance(m, ir.OFLengthMember):
-        return False
-
-    if m.oftype != "uint16_t":
-        return False
-
-    return True
+    return m.oftype == "uint16_t" if isinstance(m, ir.OFLengthMember) else False
 
 def class_is_list(cls):
     """
@@ -165,16 +157,15 @@ def list_to_entry_type(cls):
     Return the entry type for a list
     """
     slen = len("of_list_")
-    return "of_" + cls[slen:]
+    return f"of_{cls[slen:]}"
 
 def type_to_short_name(m_type):
     if m_type in of_g.of_base_types:
-        tname = of_g.of_base_types[m_type]["short_name"]
+        return of_g.of_base_types[m_type]["short_name"]
     elif m_type in of_g.of_mixed_types:
-        tname = of_g.of_mixed_types[m_type]["short_name"]
+        return of_g.of_mixed_types[m_type]["short_name"]
     else:
-        tname = "unknown"
-    return tname
+        return "unknown"
 
 def member_to_index(m_name, members):
     """
@@ -185,12 +176,9 @@ def member_to_index(m_name, members):
 
     Note we could generate an index when processing the original input
     """
-    count = 0
-    for d in members:
-        if d["name"] == m_name:
-            return count
-        count += 1
-    return -1
+    return next(
+        (count for count, d in enumerate(members) if d["name"] == m_name), -1
+    )
 
 def member_base_type(cls, m_name):
     """
@@ -200,9 +188,7 @@ def member_base_type(cls, m_name):
     @return The of_ type of the member
     """
     rv = of_g.unified[cls]["union"][m_name]["m_type"]
-    if rv[-2:] == "_t":
-        return rv
-    return rv + "_t"
+    return rv if rv[-2:] == "_t" else f"{rv}_t"
 
 def type_is_scalar(m_type):
     return m_type in of_g.of_scalar_types
@@ -228,10 +214,10 @@ def instance_to_class(instance, parent):
     """
     Return the name of the class for an instance of inheritance type parent
     """
-    return parent + "_" + instance
+    return f"{parent}_{instance}"
 
 def class_to_instance(cls, base_cls):
-    assert cls.startswith(base_cls + '_')
+    assert cls.startswith(f'{base_cls}_')
     return cls[len(base_cls)+1:]
 
 def class_is_var_len(cls, version):
@@ -239,7 +225,7 @@ def class_is_var_len(cls, version):
     if cls == "of_match":
         return version == 3
 
-    return not (cls, version) in of_g.is_fixed_length
+    return (cls, version) not in of_g.is_fixed_length
 
 ##
 # Is class a flow modify of some sort?
@@ -257,7 +243,7 @@ def all_member_types_get(cls, version):
     """
     member_types = []
 
-    if not version in of_g.unified[cls]:
+    if version not in of_g.unified[cls]:
         return ([], [])
 
     if "use_version" in of_g.unified[cls][version]:
@@ -271,7 +257,7 @@ def all_member_types_get(cls, version):
         m_name = member["name"]
         if skip_member_name(m_name):
             continue
-        if not m_type in member_types:
+        if m_type not in member_types:
             member_types.append(m_type)
 
     return (members, member_types)
@@ -291,7 +277,7 @@ def list_name_extract(list_type):
         list_name = list_name[3:]
     if list_name[-2:] == "_t":
         list_name = list_name[:-2]
-    list_name = "of_list_" + list_name
+    list_name = f"of_list_{list_name}"
     return (list_name, base_type)
 
 def version_to_name(version):
@@ -310,9 +296,4 @@ def gen_c_copy_license(out):
 def accessor_returns_error(a_type, m_type):
     is_var_len = (not type_is_scalar(m_type)) and \
         [x for x in of_g.of_version_range if class_is_var_len(m_type[:-2], x)] != []
-    if a_type == "set" and is_var_len:
-        return True
-    elif m_type == "of_match_t":
-        return True
-    else:
-        return False
+    return a_type == "set" and is_var_len or m_type == "of_match_t"

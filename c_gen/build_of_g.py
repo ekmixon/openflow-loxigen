@@ -78,14 +78,15 @@ def add_class(wire_version, cls, members):
         for wver in uc:
             if type(wver) != type(0): continue
             if wver == wire_version: continue
-            if not "use_version" in uc[wver]:
-                if sig == loxi_utils.class_signature(uc[wver]["members"]):
-                    log("Matched %s, ver %d to ver %d" %
-                          (cls, wire_version, wver))
-                    # have a match with existing version
-                    uc[wire_version]["use_version"] = wver
-                    # What else to do?
-                    return
+            if "use_version" not in uc[
+                wver
+            ] and sig == loxi_utils.class_signature(uc[wver]["members"]):
+                log("Matched %s, ver %d to ver %d" %
+                      (cls, wire_version, wver))
+                # have a match with existing version
+                uc[wire_version]["use_version"] = wver
+                # What else to do?
+                return
     else:  # Haven't seen this entry before
         log("Adding %s to unified list, ver %d" % (cls, wire_version))
         of_g.unified[cls] = dict(union={})
@@ -98,7 +99,7 @@ def add_class(wire_version, cls, members):
     #  Add to union list (I'm sure there's a better way)
     #  Check if it's a list
     union = uc["union"]
-    if not cls in of_g.ordered_members:
+    if cls not in of_g.ordered_members:
         of_g.ordered_members[cls] = []
     for member in members:
         m_name = member["name"]
@@ -106,17 +107,17 @@ def add_class(wire_version, cls, members):
         if m_name.find("pad") == 0:
             continue
         if m_name in union:
-            if not m_type == union[m_name]["m_type"]:
+            if m_type != union[m_name]["m_type"]:
                 debug("ERROR:   CLASS: %s. VERSION %d. MEMBER: %s. TYPE: %s" %
                       (cls, wire_version, m_name, m_type))
                 debug("    Type conflict adding member to unified set.")
-                debug("    Current union[%s]:" % m_name)
+                debug(f"    Current union[{m_name}]:")
                 debug(union[m_name])
                 sys.exit(1)
         else:
             union[m_name] = dict(m_type=m_type, memid=memid)
             memid += 1
-        if not m_name in of_g.ordered_members[cls]:
+        if m_name not in of_g.ordered_members[cls]:
             of_g.ordered_members[cls].append(m_name)
 
 def order_and_assign_object_ids():
@@ -192,6 +193,7 @@ def build_ordered_classes():
     @fixme Should select versions to support from command line
     """
 
+    pad_count = 0
     for version, protocol in loxi_globals.ir.items():
         wire_version = version.wire_version
         # Populate global state
@@ -200,14 +202,11 @@ def build_ordered_classes():
         for ofclass in protocol.classes:
             of_g.ordered_classes[wire_version].append(ofclass.name)
             legacy_members = []
-            pad_count = 0
             for m in ofclass.members:
-                if type(m) == OFPadMember:
-                    continue
-                else:
+                if type(m) != OFPadMember:
                     if m.oftype.find("list(") == 0:
                         (list_name, base_type) = loxi_utils.list_name_extract(m.oftype)
-                        m_type = list_name + "_t"
+                        m_type = f"{list_name}_t"
                     else:
                         enum = find(lambda e: e.name == m.oftype, protocol.enums)
                         if enum and "wire_type" in enum.params:
@@ -215,11 +214,7 @@ def build_ordered_classes():
                         else:
                             m_type = m.oftype
 
-                    if m.offset is None:
-                        m_offset = -1
-                    else:
-                        m_offset = m.offset
-
+                    m_offset = -1 if m.offset is None else m.offset
                     legacy_members.append(dict(m_type=m_type, name=m.name, offset=m_offset))
             versions[version_name]['classes'][ofclass.name] = legacy_members
 
@@ -270,11 +265,13 @@ def analyze_input():
             for m in ofclass.members:
                 if isinstance(m, OFPadMember):
                     continue
-                if m.offset == None:
+                if m.offset is None:
                     old = of_g.special_offsets.get((ofclass.name, m.name))
                     if old and old != prev_member.name:
-                        raise Exception("Error: special offset changed: version=%s cls=%s member=%s old=%s new=%s" %
-                                        (version, ofclass.name, m.name, old, prev_member.name))
+                        raise Exception(
+                            f"Error: special offset changed: version={version} cls={ofclass.name} member={m.name} old={old} new={prev_member.name}"
+                        )
+
                     of_g.special_offsets[(ofclass.name, m.name)] = prev_member.name
                 prev_member = m
 

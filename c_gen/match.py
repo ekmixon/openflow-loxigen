@@ -152,11 +152,11 @@ def build():
         type_len = uclass.member_by_name('type_len').value
 
         # Order match keys by their type_len
-        if (type_len & 0xffff0000) == 0x80000000:
-            # OpenFlow Basic comes first
-            order = type_len & 0x0000ffff
-        else:
-            order = type_len
+        order = (
+            type_len & 0x0000FFFF
+            if (type_len & 0xFFFF0000) == 0x80000000
+            else type_len
+        )
 
         match_member = dict(
             name=name,
@@ -180,9 +180,7 @@ def build():
 ##
 # Check that all members in the hash are recognized as match keys
 def match_sanity_check():
-    count = 0
-    for match_v in ["of_match_v1", "of_match_v2"]:
-        count += 1
+    for count, match_v in enumerate(["of_match_v1", "of_match_v2"], start=1):
         for mm in of_g.unified[match_v][count]["members"]:
             key = mm["name"]
             if key.find("_mask") >= 0:
@@ -191,8 +189,8 @@ def match_sanity_check():
                 continue
             if key == "wildcards":
                 continue
-            if not key in of_match_members:
-                print("Key %s not found in match struct, v %s" % (key, match_v))
+            if key not in of_match_members:
+                print(f"Key {key} not found in match struct, v {match_v}")
                 sys.exit(1)
 
     # Generate list of OXM names from the unified classes
@@ -202,22 +200,23 @@ def match_sanity_check():
 
     # Check that all OXMs are in the match members
     for key in oxm_names:
-        if not key in of_match_members:
-            if not (key.find("_masked") > 0):
-                debug("Key %s in OXM, not of_match_members" % key)
+        if key not in of_match_members:
+            if key.find("_masked") <= 0:
+                debug(f"Key {key} in OXM, not of_match_members")
                 sys.exit(1)
-            if not key[:-7] in of_match_members:
-                debug("Key %s in OXM, but %s not in of_match_members"
-                      % (key, key[:-7]))
+            if key[:-7] not in of_match_members:
+                debug(f"Key {key} in OXM, but {key[:-7]} not in of_match_members")
                 sys.exit(1)
 
     # Check that all match members are in the OXMs
     for key in of_match_members:
-        if not key in oxm_names:
-            debug("Key %s in of_match_members, not in OXM" % key)
+        if key not in oxm_names:
+            debug(f"Key {key} in of_match_members, not in OXM")
             sys.exit(1)
-        oxm_type = of_g.unified['of_oxm_%s' % key]['union']['value']['m_type']
+        oxm_type = of_g.unified[f'of_oxm_{key}']['union']['value']['m_type']
         if of_match_members[key]["m_type"] != oxm_type:
-            debug("Type mismatch for key %s in oxm data: %s vs %s" %
-                  (key, of_match_members[key]["m_type"], oxm_type))
+            debug(
+                f'Type mismatch for key {key} in oxm data: {of_match_members[key]["m_type"]} vs {oxm_type}'
+            )
+
             sys.exit(1)

@@ -135,22 +135,18 @@ class JavaModel(object):
     """ Metadata container. """
     OFEnumMetadata = namedtuple("OFEnumMetadata", ("properties", "to_string"))
 
-    def gen_port_speed(enum_entry):
+    def gen_port_speed(self):
         """ Generator function for OFortFeatures.PortSpeed"""
-        splits = enum_entry.name.split("_")
+        splits = self.name.split("_")
         if len(splits)>=2:
-            m = re.match(r'\d+[MGTP]B', splits[1])
-            if m:
-                return "PortSpeed.SPEED_{}".format(splits[1])
+            if m := re.match(r'\d+[MGTP]B', splits[1]):
+                return f"PortSpeed.SPEED_{splits[1]}"
         return "PortSpeed.SPEED_NONE";
 
-    def gen_stp_state(enum_entry):
+    def gen_stp_state(self):
         """ Generator function for OFPortState.StpState"""
-        splits = enum_entry.name.split("_")
-        if len(splits)>=1:
-            if splits[0] == "STP":
-                return "true"
-        return "false"
+        splits = self.name.split("_")
+        return "true" if len(splits)>=1 and splits[0] == "STP" else "false"
 
     # registry for metadata properties for enums
     # map: ${java_enum_name}: OFEnumMetadata
@@ -188,7 +184,7 @@ class JavaModel(object):
         name_stable_map = {}
 
         for version in self.versions:
-            logger.debug("version: {}".format(version.ir_version))
+            logger.debug(f"version: {version.ir_version}")
             of_protocol = loxi_globals.ir[version.ir_version]
             for enum in of_protocol.enums:
                 name_version_enum_map[enum.name][version] = enum
@@ -196,11 +192,10 @@ class JavaModel(object):
 
                 logger.debug("Enum: %s stable: %s", enum.name, stable)
 
-                if not enum.name in name_stable_map:
+                if enum.name not in name_stable_map:
                     name_stable_map[enum.name] = stable
-                else:
-                    if name_stable_map[enum.name] != stable:
-                        raise Exception("Inconsistent enum stability (should be caught " +\
+                elif name_stable_map[enum.name] != stable:
+                    raise Exception("Inconsistent enum stability (should be caught " +\
                             " by IR)")
 
         enums = [ JavaEnum(name, name_stable_map[name], version_enum_map) for name, version_enum_map,
@@ -212,10 +207,10 @@ class JavaModel(object):
 
     @memoize
     def enum_by_name(self, name):
-        res = find(lambda e: e.name == name, self.enums)
-        if not res:
-            raise KeyError("Could not find enum with name %s" % name)
-        return res
+        if res := find(lambda e: e.name == name, self.enums):
+            return res
+        else:
+            raise KeyError(f"Could not find enum with name {name}")
 
     @property
     @memoize
@@ -230,18 +225,36 @@ class JavaModel(object):
             remove_prefix = base_class[2].lower() + base_class[3:]
 
             # HACK need to have a better way to deal with parameterized base classes
-            annotated_base_class = base_class + "<?>" if base_class == "OFOxm" or base_class == "OFOxs" else base_class
+            annotated_base_class = (
+                f"{base_class}<?>"
+                if base_class in ["OFOxm", "OFOxs"]
+                else base_class
+            )
 
-            factories[base_class] = OFFactory(package="%s.%s" % (prefix, package),
-                    name=base_class + "s", members=[], remove_prefix=remove_prefix, base_class=annotated_base_class, sub_factories={}, xid_generator= (base_class == "OFErrorMsg"))
+
+            factories[base_class] = OFFactory(
+                package=f"{prefix}.{package}",
+                name=f"{base_class}s",
+                members=[],
+                remove_prefix=remove_prefix,
+                base_class=annotated_base_class,
+                sub_factories={},
+                xid_generator=(base_class == "OFErrorMsg"),
+            )
+
 
         factories[""] = OFFactory(
-                    package=prefix,
-                    name="OFFactory",
-                    remove_prefix="",
-                    members=[], base_class="OFMessage", sub_factories=OrderedDict(
-                        ("{}{}s".format(n[2].lower(), n[3:]), "{}s".format(n)) for n in sub_factory_classes ),
-                    xid_generator=True)
+            package=prefix,
+            name="OFFactory",
+            remove_prefix="",
+            members=[],
+            base_class="OFMessage",
+            sub_factories=OrderedDict(
+                (f"{n[2].lower()}{n[3:]}s", f"{n}s") for n in sub_factory_classes
+            ),
+            xid_generator=True,
+        )
+
 
         for i in self.interfaces:
             for n, factory in factories.items():
@@ -257,10 +270,14 @@ class JavaModel(object):
 
     @memoize
     def factory_of(self, interface):
-        for factory in self.of_factories:
-            if interface in factory.members:
-                return factory
-        return None
+        return next(
+            (
+                factory
+                for factory in self.of_factories
+                if interface in factory.members
+            ),
+            None,
+        )
 
     def generate_class(self, clazz):
         """ return wether or not to generate implementation class clazz.
@@ -282,10 +299,7 @@ class JavaModel(object):
             return True
         if loxi_utils.class_is_instruction(clazz.interface.c_name):
             return True
-        if loxi_utils.class_is_oxs(clazz.interface.c_name):
-            return True
-        else:
-            return True
+        return True if loxi_utils.class_is_oxs(clazz.interface.c_name) else True
 
     @property
     @memoize
@@ -308,28 +322,25 @@ class JavaModel(object):
 class OFFactory(namedtuple("OFFactory", ("package", "name", "members", "remove_prefix", "base_class", "sub_factories", "xid_generator"))):
     @property
     def factory_classes(self):
-            return [ OFFactoryClass(
-                    package="org.projectfloodlight.openflow.protocol.ver{}".format(version.dotless_version),
-                    name="{}Ver{}".format(self.name, version.dotless_version),
-                    interface=self,
-                    version=version
-                    ) for version in model.versions ]
+        return [
+            OFFactoryClass(
+                package=f"org.projectfloodlight.openflow.protocol.ver{version.dotless_version}",
+                name=f"{self.name}Ver{version.dotless_version}",
+                interface=self,
+                version=version,
+            )
+            for version in model.versions
+        ]
 
     def method_name(self, member, builder=True):
         n = member.variable_name
         if n.startswith(self.remove_prefix):
             n = n[len(self.remove_prefix):]
             n = n[0].lower() + n[1:]
-        if builder:
-            return "build" + n[0].upper() + n[1:]
-        else:
-            return n
+        return f"build{n[0].upper()}{n[1:]}" if builder else n
 
     def of_version(self, version):
-        for fc in self.factory_classes:
-            if fc.version == version:
-                return fc
-        return None
+        return next((fc for fc in self.factory_classes if fc.version == version), None)
 
 OFGenericClass = namedtuple("OFGenericClass", ("package", "name"))
 class OFFactoryClass(namedtuple("OFFactoryClass", ("package", "name", "interface", "version"))):
@@ -365,7 +376,7 @@ class JavaOFVersion(object):
 
     @property
     def constant_version(self):
-        return "OF_" + self.dotless_version
+        return f"OF_{self.dotless_version}"
 
     def __repr__(self):
         return "JavaOFVersion(%d)" % self.int_version
@@ -406,7 +417,12 @@ class JavaOFInterface(object):
         self.constant_name = self.c_name.upper().replace("OF_", "")
 
         pck_suffix, parent_interface, self.type_annotation = self.class_info()
-        self.package = "org.projectfloodlight.openflow.protocol.%s" % pck_suffix if pck_suffix else "org.projectfloodlight.openflow.protocol"
+        self.package = (
+            f"org.projectfloodlight.openflow.protocol.{pck_suffix}"
+            if pck_suffix
+            else "org.projectfloodlight.openflow.protocol"
+        )
+
         if self.name != parent_interface:
             self.parent_interface = parent_interface
         else:
@@ -422,14 +438,13 @@ class JavaOFInterface(object):
     @memoize
     def additional_parent_interfaces(self):
         if loxi_utils.class_is_message(self.c_name) and not self.is_virtual:
-            m = re.match(r'(.*)Request$', self.name)
-            if m:
-                reply_name = m.group(1) + "Reply"
+            if m := re.match(r'(.*)Request$', self.name):
+                reply_name = m[1] + "Reply"
                 if model.interface_by_name(reply_name):
-                    return ["OFRequest<%s>" % reply_name ]
+                    return [f"OFRequest<{reply_name}>"]
             elif self.name == "OFBundleCtrlMsg":
                 reply_name = "OFBundleCtrlMsg"
-                return ["OFRequest<%s>" % reply_name ]
+                return [f"OFRequest<{reply_name}>"]
         return []
 
 
@@ -437,31 +452,23 @@ class JavaOFInterface(object):
         if self == other_class:
             return True
         parent = self.super_class
-        if parent is None:
-            return False
-        else:
-            return parent.is_instance_of(other_class)
+        return False if parent is None else parent.is_instance_of(other_class)
 
     @property
     def super_class(self):
-        if not self.parent_interface:
-            return None
-        else:
-            return model.interface_by_name(self.parent_interface)
+        return (
+            model.interface_by_name(self.parent_interface)
+            if self.parent_interface
+            else None
+        )
 
 
     def inherited_declaration(self, type_spec="?"):
-        if self.type_annotation:
-            return "%s<%s>" % (self.name, type_spec)
-        else:
-            return "%s" % self.name
+        return f"{self.name}<{type_spec}>" if self.type_annotation else f"{self.name}"
 
     @property
     def type_variable(self):
-        if self.type_annotation:
-            return "<T>"
-        else:
-            return "";
+        return "<T>" if self.type_annotation else ""
 
     def class_info(self):
         """ return tuple of (package_prefix, parent_class) for the current JavaOFInterface"""
@@ -513,7 +520,7 @@ class JavaOFInterface(object):
             super_type_annotation = "T" if self.ir_class.virtual else reply_name
 
             type_annotation = "T extends {}".format(reply_name) if self.ir_class.virtual \
-                    else ""
+                        else ""
 
             return (package, "{}<{}>".format(super_name, super_type_annotation),
                     type_annotation)
@@ -524,13 +531,23 @@ class JavaOFInterface(object):
         elif loxi_utils.class_is_oxm(self.c_name):
             # look up type from member value for OFValueType type annotation
             if self.member_by_name("value") is not None:
-                return (package, "OFOxm<%s>" % self.member_by_name("value").java_type.public_type, None)
+                return (
+                    package,
+                    f'OFOxm<{self.member_by_name("value").java_type.public_type}>',
+                    None,
+                )
+
             else:
                 return (package, "OFOxm", None)
         elif loxi_utils.class_is_oxs(self.c_name):
             # look up type from member value for OFValueType type annotation
             if self.member_by_name("value") is not None:
-                return (package, "OFOxs<%s>" % self.member_by_name("value").java_type.public_type, None)
+                return (
+                    package,
+                    f'OFOxs<{self.member_by_name("value").java_type.public_type}>',
+                    None,
+                )
+
             else:
                 return (package, "OFOxs", None)
         else:
@@ -563,8 +580,8 @@ class JavaOFInterface(object):
         for (version, of_class) in self.version_map.items():
             for of_member in of_class.members:
                 if isinstance(of_member, OFLengthMember) or \
-                   isinstance(of_member, OFFieldLengthMember) or \
-                   isinstance(of_member, OFPadMember):
+                       isinstance(of_member, OFFieldLengthMember) or \
+                       isinstance(of_member, OFPadMember):
                     continue
                 java_member = JavaMember.for_of_member(self, of_member)
                 if of_member.name not in member_map:
@@ -575,14 +592,9 @@ class JavaOFInterface(object):
 
                     if existing.java_type.public_type != java_member.java_type.public_type:
                         raise Exception(
-                             "Error constructing interface {}: type signatures do not match up between versions.\n"
-                             " Member Name: {}\n"
-                             " Existing: Version={}, Java={}, IR={}\n"
-                             " New:      Version={}, Java={}, IR={}"
-                               .format(self.name, existing.name,
-                                   member_version_map[of_member.name], existing.java_type.public_type, existing.member.oftype,
-                                   version, java_member.java_type.public_type, java_member.member.oftype)
+                            f"Error constructing interface {self.name}: type signatures do not match up between versions.\n Member Name: {existing.name}\n Existing: Version={member_version_map[of_member.name]}, Java={existing.java_type.public_type}, IR={existing.member.oftype}\n New:      Version={version}, Java={java_member.java_type.public_type}, IR={java_member.member.oftype}"
                         )
+
 
         return tuple(m for m in member_map.values() if m.name not in model.read_blacklist[self.name])
 
@@ -610,11 +622,16 @@ class JavaOFInterface(object):
                 field_type = java_type.make_match_field_jtype()
 
             virtual_members += [
-                    JavaVirtualMember(self, "matchField", field_type),
-                    JavaVirtualMember(self, "masked", java_type.boolean),
-                    JavaVirtualMember(self, "canonical", java_type.make_oxm_jtype(value.java_type.public_type),
-                            custom_template=lambda builder: "OFOxm{}_getCanonical.java".format(".Builder" if builder else "")),
-                   ]
+                JavaVirtualMember(self, "matchField", field_type),
+                JavaVirtualMember(self, "masked", java_type.boolean),
+                JavaVirtualMember(
+                    self,
+                    "canonical",
+                    java_type.make_oxm_jtype(value.java_type.public_type),
+                    custom_template=lambda builder: f'OFOxm{".Builder" if builder else ""}_getCanonical.java',
+                ),
+            ]
+
             if not find(lambda x: x.name == "mask", self.ir_model_members):
                 virtual_members.append(
                         JavaVirtualMember(self, "mask", find(lambda x: x.name == "value", self.ir_model_members).java_type))
@@ -626,11 +643,16 @@ class JavaOFInterface(object):
                 field_type = java_type.make_stat_field_jtype()
 
             virtual_members += [
-                    JavaVirtualMember(self, "statField", field_type),
-                    JavaVirtualMember(self, "masked", java_type.boolean),
-                    JavaVirtualMember(self, "canonical", java_type.make_oxs_jtype(value.java_type.public_type),
-                            custom_template=lambda builder: "OFOxs{}_getCanonical.java".format(".Builder" if builder else "")),
-                   ]
+                JavaVirtualMember(self, "statField", field_type),
+                JavaVirtualMember(self, "masked", java_type.boolean),
+                JavaVirtualMember(
+                    self,
+                    "canonical",
+                    java_type.make_oxs_jtype(value.java_type.public_type),
+                    custom_template=lambda builder: f'OFOxs{".Builder" if builder else ""}_getCanonical.java',
+                ),
+            ]
+
             if not find(lambda x: x.name == "mask", self.ir_model_members):
                 virtual_members.append(
                         JavaVirtualMember(self, "mask", find(lambda x: x.name == "value", self.ir_model_members).java_type))
@@ -689,7 +711,10 @@ class JavaOFClass(object):
         self.c_name = self.ir_class.name
         self.version = version
         self.constant_name = self.c_name.upper().replace("OF_", "")
-        self.package = "org.projectfloodlight.openflow.protocol.ver%s" % version.dotless_version
+        self.package = (
+            f"org.projectfloodlight.openflow.protocol.ver{version.dotless_version}"
+        )
+
         self.generated = False
 
     @property
@@ -699,7 +724,7 @@ class JavaOFClass(object):
 
     @property
     def name(self):
-        return "%sVer%s" % (self.interface.name, self.version.dotless_version)
+        return f"{self.interface.name}Ver{self.version.dotless_version}"
 
     @property
     def variable_name(self):
@@ -710,7 +735,9 @@ class JavaOFClass(object):
         if self.is_fixed_length:
             return self.min_length
         else:
-            raise Exception("No fixed length for class %s, version %s" % (self.name, self.version))
+            raise Exception(
+                f"No fixed length for class {self.name}, version {self.version}"
+            )
 
     @property
     def min_length(self):
@@ -755,33 +782,65 @@ class JavaOFClass(object):
     def virtual_members(self):
         virtual_members = []
         if self.ir_class.is_subclassof("of_oxm"):
-            value_member = find(lambda m: m.name, self.ir_model_members)
-            if value_member:
+            if value_member := find(lambda m: m.name, self.ir_model_members):
                 oxm_entry = model.oxm_map[self.interface.name]
                 virtual_members += [
-                    JavaVirtualMember(self, "matchField", java_type.make_match_field_jtype(value_member.java_type.public_type), "MatchField.%s" % oxm_entry.value),
-                    JavaVirtualMember(self, "masked", java_type.boolean, "true" if oxm_entry.masked else "false"),
-                    ]
+                    JavaVirtualMember(
+                        self,
+                        "matchField",
+                        java_type.make_match_field_jtype(
+                            value_member.java_type.public_type
+                        ),
+                        f"MatchField.{oxm_entry.value}",
+                    ),
+                    JavaVirtualMember(
+                        self,
+                        "masked",
+                        java_type.boolean,
+                        "true" if oxm_entry.masked else "false",
+                    ),
+                ]
+
             else:
                 virtual_members += [
                     JavaVirtualMember(self, "matchField", java_type.make_match_field_jtype(), "null"),
                     JavaVirtualMember(self, "masked", java_type.boolean, "false"),
                  ]
         elif self.ir_class.is_subclassof("of_oxs"):
-            value_member = find(lambda m: m.name, self.ir_model_members)
-            if value_member:
+            if value_member := find(lambda m: m.name, self.ir_model_members):
                 oxs_entry = model.oxs_map[self.interface.name]
                 virtual_members += [
-                    JavaVirtualMember(self, "statField", java_type.make_stat_field_jtype(value_member.java_type.public_type), "StatField.%s" % oxs_entry.value),
-                    JavaVirtualMember(self, "masked", java_type.boolean, "true" if oxs_entry.masked else "false"),
-                    ]
+                    JavaVirtualMember(
+                        self,
+                        "statField",
+                        java_type.make_stat_field_jtype(
+                            value_member.java_type.public_type
+                        ),
+                        f"StatField.{oxs_entry.value}",
+                    ),
+                    JavaVirtualMember(
+                        self,
+                        "masked",
+                        java_type.boolean,
+                        "true" if oxs_entry.masked else "false",
+                    ),
+                ]
+
             else:
                 virtual_members += [
                     JavaVirtualMember(self, "statField", java_type.make_stat_field_jtype(), "null"),
                     JavaVirtualMember(self, "masked", java_type.boolean, "false"),
                  ]
         if not find(lambda m: m.name == "version", self.ir_model_members):
-            virtual_members.append(JavaVirtualMember(self, "version", java_type.of_version, "OFVersion.%s" % self.version.constant_version))
+            virtual_members.append(
+                JavaVirtualMember(
+                    self,
+                    "version",
+                    java_type.of_version,
+                    f"OFVersion.{self.version.constant_version}",
+                )
+            )
+
 
         return tuple(virtual_members)
 
@@ -790,9 +849,11 @@ class JavaOFClass(object):
         return find(lambda m: m.name == name, self.members)
 
     def all_versions(self):
-        return [ JavaOFVersion(int_version)
-                 for int_version in of_g.unified[self.c_name]
-                 if int_version != 'union' and int_version != 'object_id' ]
+        return [
+            JavaOFVersion(int_version)
+            for int_version in of_g.unified[self.c_name]
+            if int_version not in ['union', 'object_id']
+        ]
 
     def version_is_inherited(self, version):
         return 'use_version' in of_g.unified[self.ir_class.name][version.int_version]
@@ -859,37 +920,33 @@ class JavaMember(object):
 
     @property
     def setter_name(self):
-        return "set" + self.title_name
+        return f"set{self.title_name}"
 
     @property
     def default_name(self):
         if self.is_fixed_value:
             return self.constant_name
         else:
-            return "DEFAULT_"+self.constant_name
+            return f"DEFAULT_{self.constant_name}"
 
     @property
     def default_value(self):
         if self.is_fixed_value:
             return self.enum_value
-        else:
-            default = self.java_type.default_op(self.msg.version)
-            if default == "null" and not self.is_nullable:
-                return None
-            else:
-                return default
+        default = self.java_type.default_op(self.msg.version)
+        return None if default == "null" and not self.is_nullable else default
 
     @property
     def enum_value(self):
         if self.name == "version":
-            return "OFVersion.%s" % self.msg.version.constant_version
+            return f"OFVersion.{self.msg.version.constant_version}"
 
         java_type = self.java_type.public_type;
         try:
             global model
             enum = model.enum_by_name(java_type)
             entry = enum.entry_by_version_value(self.msg.version, self.value)
-            return "%s.%s" % ( enum.name, entry.name)
+            return f"{enum.name}.{entry.name}"
         except KeyError as e:
             logger.debug("No enum found for type %s version %s value %s", java_type, self.msg.version, self.value)
             return self.value
@@ -899,7 +956,7 @@ class JavaMember(object):
         return isinstance(self.member, OFPadMember)
 
     def is_type_value(self, version=None):
-        if(version==None):
+        if version is None:
             return any(self.is_type_value(version) for version in self.msg.all_versions)
         try:
             return self.c_name in get_type_values(self.msg.c_name, version.int_version)
@@ -936,7 +993,7 @@ class JavaMember(object):
     def value(self):
         if self.name == "version":
             return self.msg.version.int_version
-        elif self.name == "length" or self.name == "len":
+        elif self.name in ["length", "len"]:
             return self.msg.length
         else:
             return self.java_type.format_value(self.member.value)
@@ -945,7 +1002,7 @@ class JavaMember(object):
     def priv_value(self):
         if self.name == "version":
             return self.java_type.format_value(self.msg.version.int_version, pub_type=False)
-        elif self.name == "length" or self.name == "len":
+        elif self.name in ["length", "len"]:
             return self.java_type.format_value(self.msg.length, pub_type=False)
         else:
             return self.java_type.format_value(self.member.value, pub_type=False)
@@ -954,16 +1011,14 @@ class JavaMember(object):
     def needs_setter(self):
         if self.is_writeable:
             return True
-        super_class = self.msg.super_class
-        if super_class:
-            super_member = super_class.member_by_name(self.name)
-            if super_member:
+        if super_class := self.msg.super_class:
+            if super_member := super_class.member_by_name(self.name):
                 return super_member.needs_setter
         return False
 
     @property
     def is_writeable(self):
-        return self.is_data and not self.name in model.write_blacklist[self.msg.name]
+        return self.is_data and self.name not in model.write_blacklist[self.msg.name]
 
     def get_type_value_info(self, version):
         return get_type_values(msg.c_name, version.int_version)[self.c_name]
@@ -972,32 +1027,30 @@ class JavaMember(object):
     def length(self):
         if hasattr(self.member, "length"):
             return self.member.length
-        else:
-            count, base = loxi_utils.type_dec_to_count_base(self.member.type)
-            return of_g.of_base_types[base]['bytes'] * count
+        count, base = loxi_utils.type_dec_to_count_base(self.member.type)
+        return of_g.of_base_types[base]['bytes'] * count
 
     @staticmethod
     def for_of_member(java_class, member):
         if isinstance(member, OFPadMember):
             return JavaMember(None, "", None, member)
+        if member.name == 'len':
+            name = 'length'
+        elif member.name == 'value_mask':
+            name = 'mask'
+        elif member.name == 'group_id':
+            name = 'group'
         else:
-            if member.name == 'len':
-                name = 'length'
-            elif member.name == 'value_mask':
-                name = 'mask'
-            elif member.name == 'group_id':
-                name = 'group'
-            else:
-                name = java_type.name_c_to_camel(member.name)
-            j_type = java_type.convert_to_jtype(java_class.c_name, member.name, member.oftype)
-            return JavaMember(java_class, name, j_type, member)
+            name = java_type.name_c_to_camel(member.name)
+        j_type = java_type.convert_to_jtype(java_class.c_name, member.name, member.oftype)
+        return JavaMember(java_class, name, j_type, member)
 
     @property
     def is_universal(self):
-        for version, ir_class in self.msg.ir_class.version_classes.items():
-            if not ir_class.member_by_name(self.member.name):
-                return False
-        return True
+        return all(
+            ir_class.member_by_name(self.member.name)
+            for version, ir_class in self.msg.ir_class.version_classes.items()
+        )
 
     @property
     def is_virtual(self):
@@ -1055,16 +1108,15 @@ class JavaUnitTestSet(object):
                                                      name=java_class.c_name[3:])
         glob_file_name = "of{version}/{name}__*.data".format(version=java_class.version.dotless_version,
                                                      name=java_class.c_name[3:])
-        test_class_name = self.java_class.name + "Test"
+        test_class_name = f"{self.java_class.name}Test"
         self.test_units = []
         if test_data.exists(first_data_file_name):
             self.test_units.append(JavaUnitTest(java_class, first_data_file_name, test_class_name))
 
         i = 1
         for f in test_data.glob(glob_file_name):
-            m = re.match(".*__(.*).data", f)
-            if m:
-                suffix = java_type.name_c_to_caps_camel(m.group(1))
+            if m := re.match(".*__(.*).data", f):
+                suffix = java_type.name_c_to_caps_camel(m[1])
             else:
                 suffix = str(i)
                 i += 1
@@ -1096,7 +1148,7 @@ class JavaUnitTest(object):
         else:
             self.data_file_name = file_name
         if test_class_name is None:
-            self.test_class_name = self.java_class.name + "Test"
+            self.test_class_name = f"{self.java_class.name}Test"
         else:
             self.test_class_name = test_class_name
 
@@ -1185,19 +1237,17 @@ class JavaEnum(object):
 
     @memoize
     def entry_by_name(self, name):
-        res = find(lambda e: e.name == name, self.entries)
-        if res:
+        if res := find(lambda e: e.name == name, self.entries):
             return res
         else:
-            raise KeyError("Enum %s: no entry with name %s" % (self.name, name))
+            raise KeyError(f"Enum {self.name}: no entry with name {name}")
 
     @memoize
     def entry_by_c_name(self, name):
-        res = find(lambda e: e.c_name == name, self.entries)
-        if res:
+        if res := find(lambda e: e.c_name == name, self.entries):
             return res
         else:
-            raise KeyError("Enum %s: no entry with c_name %s" % (self.name, name))
+            raise KeyError(f"Enum {self.name}: no entry with c_name {name}")
 
     @memoize
     def entry_by_version_value(self, version, value):
@@ -1205,7 +1255,9 @@ class JavaEnum(object):
         if res:
             return res
         else:
-            raise KeyError("Enum %s: no entry with version %s, value %s" % (self.name, version, value))
+            raise KeyError(
+                f"Enum {self.name}: no entry with version {version}, value {value}"
+            )
 
 # values: Map JavaVersion->Value
 class JavaEnumEntry(object):
@@ -1225,8 +1277,7 @@ class JavaEnumEntry(object):
         return self.values[version]
 
     def format_value(self, version):
-        res = self.enum.wire_type(version).format_value(self.values[version])
-        return res
+        return self.enum.wire_type(version).format_value(self.values[version])
 
     def all_values(self, versions, not_present=None):
         return [ self.values[version] if version in self.values else not_present for version in versions ]
@@ -1236,13 +1287,15 @@ class JavaEnumEntry(object):
         if self.enum.stable:
             return list(self.values.values())[0]
         else:
-            raise Exception("Enum {} not stable".format(self.enum.name))
+            raise Exception(f"Enum {self.enum.name} not stable")
 
     @property
     @memoize
     def masked_enum_group(self):
-        group = find(lambda g: self.name in g.members, model.masked_enum_groups[self.enum.name])
-        return group
+        return find(
+            lambda g: self.name in g.members,
+            model.masked_enum_groups[self.enum.name],
+        )
 
     @property
     @memoize

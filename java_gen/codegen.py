@@ -49,8 +49,8 @@ import java_gen.java_model as java_model
 logger = logging.getLogger(__name__)
 
 def gen_all_java(install_dir):
-    basedir= '%s/openflowj' % install_dir
-    logger.info("Outputting to %s" % basedir)
+    basedir = f'{install_dir}/openflowj'
+    logger.info(f"Outputting to {basedir}")
     if os.path.exists(basedir):
         shutil.rmtree(basedir)
     os.makedirs(basedir)
@@ -80,12 +80,17 @@ class JavaGenerator(object):
         context['template_dir'] = self.templates_dir
         context['genopts']= self.gen_opts
 
-        filename = os.path.join(self.basedir, src_dir, "%s/%s.java" % (clazz.package.replace(".", "/"), clazz.name))
+        filename = os.path.join(
+            self.basedir,
+            src_dir,
+            f'{clazz.package.replace(".", "/")}/{clazz.name}.java',
+        )
+
         dirname = os.path.dirname(filename)
         if not os.path.exists(dirname):
             os.makedirs(dirname)
         prefix = '//::(?=[ \t]|$)'
-        logger.debug("rendering filename: %s" % filename)
+        logger.debug(f"rendering filename: {filename}")
         with open(filename, "w") as f:
             template_utils.render_template(f, template, [self.templates_dir], context, prefix=prefix)
 
@@ -94,7 +99,7 @@ class JavaGenerator(object):
             cleaner.find_used_imports()
             cleaner.rewrite_file(filename)
         except:
-            logger.info('Cannot clean imports from file %s' % filename)
+            logger.info(f'Cannot clean imports from file {filename}')
 
     def create_of_const_enums(self):
         for enum in self.java_model.enums:
@@ -104,7 +109,11 @@ class JavaGenerator(object):
                     template='const.java', enum=enum, all_versions=self.java_model.versions)
 
             for version in enum.versions:
-                clazz = java_model.OFGenericClass(package="org.projectfloodlight.openflow.protocol.ver{}".format(version.dotless_version), name="{}SerializerVer{}".format(enum.name, version.dotless_version))
+                clazz = java_model.OFGenericClass(
+                    package=f"org.projectfloodlight.openflow.protocol.ver{version.dotless_version}",
+                    name=f"{enum.name}SerializerVer{version.dotless_version}",
+                )
+
 
                 if enum.is_bitmask:
                     self.render_class(clazz=clazz, template="const_set_serializer.java", enum=enum, version=version)
@@ -130,16 +139,14 @@ class JavaGenerator(object):
                                 impl_class=java_class.name)
 
                         self.create_unit_test(java_class.unit_test)
+                    elif disc := java_class.discriminator:
+                        self.render_class(clazz=java_class,
+                            template='of_virtual_class.java', version=java_class.version, msg=java_class,
+                            impl_class=java_class.name, model=self.java_model)
                     else:
-                        disc = java_class.discriminator
-                        if disc:
-                            self.render_class(clazz=java_class,
-                                template='of_virtual_class.java', version=java_class.version, msg=java_class,
-                                impl_class=java_class.name, model=self.java_model)
-                        else:
-                            logger.warn("Class %s virtual but no discriminator" % java_class.name)
+                        logger.warn(f"Class {java_class.name} virtual but no discriminator")
                 else:
-                    logger.info("Class %s ignored by generate_class" % java_class.name)
+                    logger.info(f"Class {java_class.name} ignored by generate_class")
 
     def create_unit_test(self, unit_tests):
         if unit_tests.has_test_data:
@@ -162,4 +169,4 @@ class JavaGenerator(object):
 def copy_prewrite_tree(basedir):
     """ Recursively copy the directory structure from ./java_gen/pre-write
        into $basedir"""
-    logger.info("Copying pre-written files into %s" % basedir)
+    logger.info(f"Copying pre-written files into {basedir}")

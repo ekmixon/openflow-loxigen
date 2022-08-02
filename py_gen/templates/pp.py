@@ -156,8 +156,7 @@ class Group(object):
         for x in self.fragments:
             if isinstance(x, Breakable):
                 if dobreak:
-                    a.append('\n')
-                    a.append(' ' * x.indent)
+                    a.extend(('\n', ' ' * x.indent))
                     curwidth = 0
                 else:
                     a.append(x.sep)

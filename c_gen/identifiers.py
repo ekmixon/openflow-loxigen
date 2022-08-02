@@ -67,8 +67,8 @@ This could indicate a name collision in LOXI identifier translation.
 
 def defined_versions_agree(all_idents, version_list, name):
     val_list = all_idents[name]["values_by_version"]
-    for version in version_list:
-        if version in val_list:
-            if str(val_list[version]) != str(all_idents[name]["common_value"]):
-                return False
-    return True
+    return not any(
+        version in val_list
+        and str(val_list[version]) != str(all_idents[name]["common_value"])
+        for version in version_list
+    )

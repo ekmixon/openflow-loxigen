@@ -80,7 +80,7 @@ class OFVersion(namedtuple("OFVersion", ("version", "wire_version"))):
         return prefix + self.version.replace(".", "_")
 
     def __repr__(self):
-        return "OFVersion(%s)" % self.version
+        return f"OFVersion({self.version})"
 
     def __str__(self):
         return self.version
@@ -149,10 +149,7 @@ class OFClass(namedtuple('OFClass', ['name', 'superclass', 'members', 'virtual',
 
     def inheritance_root(self):
         if not self.superclass:
-            if self.virtual:
-                return self
-            else:
-                return None
+            return self if self.virtual else None
         else:
             return self.superclass.inheritance_root()
 
@@ -188,7 +185,7 @@ class OFClass(namedtuple('OFClass', ['name', 'superclass', 'members', 'virtual',
         if self.is_fixed_length:
             return self.base_length
         else:
-            raise Exception("Not a fixed length class: {}".format(self.name))
+            raise Exception(f"Not a fixed length class: {self.name}")
 
     @property
     def length_member(self):
@@ -234,10 +231,9 @@ class MemberMixin(object):
         if self.is_fixed_length:
             return self.base_length
         else:
-            raise Exception("Not a fixed length member: {}.{} [{}]".format(
-                self.of_class.name,
-                self.name if hasattr("self", "name") else "(unnnamed)",
-                type(self).__name__))
+            raise Exception(
+                f'Not a fixed length member: {self.of_class.name}.{self.name if hasattr("self", "name") else "(unnnamed)"} [{type(self).__name__}]'
+            )
 
 """
 Normal field
@@ -412,7 +408,7 @@ def build_protocol(version, ofinputs):
         if name in build_touch_classes:
             raise DependencyCycleException( "Dependency cycle: {}"
                     .format(" -> ".join(list(build_touch_classes) + [name])))
-        if not name in name_frontend_classes:
+        if name not in name_frontend_classes:
             raise ClassNotFoundException("Class not found: {}".format(name))
 
         build_touch_classes.add(name)
@@ -446,13 +442,13 @@ def build_protocol(version, ofinputs):
         return c
 
     def build_id_class(orig_name, base_name):
-        name = base_name + '_id' + orig_name[len(base_name):]
+        name = f'{base_name}_id{orig_name[len(base_name):]}'
         if name in name_classes:
             return name_classes[name]
         orig_fe, _ = name_frontend_classes[orig_name]
 
         if orig_fe.superclass:
-            superclass_name = base_name + '_id' + orig_fe.superclass[len(base_name):]
+            superclass_name = f'{base_name}_id{orig_fe.superclass[len(base_name):]}'
             superclass = build_id_class(orig_fe.superclass, base_name)
         else:
             superclass_name = None

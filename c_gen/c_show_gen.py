@@ -32,6 +32,7 @@ Generates show function files.
 
 """
 
+
 import sys
 import c_gen.of_g_legacy as of_g
 import c_gen.match as match
@@ -50,7 +51,7 @@ show_override = {
     ('uint32_t', 'dst'): 'ipv4',
 }
 
-show_hex = set([
+show_hex = {
     ('uint8_t', 'icmpv6_code'),
     ('uint8_t', 'mpls_tc'),
     ('uint16_t', 'eth_type'),
@@ -104,7 +105,7 @@ show_hex = set([
     ('uint32_t', 'band_types'),
     ('uint16_t', 'bsn_tcp_flags'),
     ('uint8_t', 'bsn_l2_cache_hit'),
-])
+}
 
 def gen_emitter(cls, m_name, m_type):
     if (m_type, m_name) in show_override:
@@ -113,7 +114,7 @@ def gen_emitter(cls, m_name, m_type):
         short_type = loxi_utils.type_to_short_name(m_type).replace('u', 'x')
     else:
         short_type = loxi_utils.type_to_short_name(m_type)
-    return "LOCI_SHOW_" + short_type;
+    return f"LOCI_SHOW_{short_type}";
 
 def gen_obj_show_h(out, name):
     loxi_utils.gen_c_copy_license(out)
